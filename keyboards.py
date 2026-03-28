@@ -21,7 +21,7 @@ def teacher_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="📊 Bugungi hisobot"), KeyboardButton(text="📅 Sana bo'yicha hisobot")],
-            [KeyboardButton(text="⚠️ Belgilamaganlar")],
+            [KeyboardButton(text="📚 Kitoblarni boshqarish"), KeyboardButton(text="⚠️ Belgilamaganlar")],
         ],
         resize_keyboard=True,
     )
@@ -32,7 +32,8 @@ def admin_menu_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="➕ Mashq qo'shish"), KeyboardButton(text="🗑 Mashq o'chirish")],
             [KeyboardButton(text="✏️ Mashq tahrirlash"), KeyboardButton(text="📋 Mashqlar ro'yxati")],
-            [KeyboardButton(text="👥 O'quvchilar ro'yxati"), KeyboardButton(text="🔗 Sinf guruhini ulash")],
+            [KeyboardButton(text="🏫 Sinflarni boshqarish"), KeyboardButton(text="📚 Kitoblarni boshqarish")],
+            [KeyboardButton(text="🔗 Sinf guruhini ulash"), KeyboardButton(text="👥 O'quvchilar ro'yxati")],
             [KeyboardButton(text="📊 Bugungi hisobot"), KeyboardButton(text="⚠️ Belgilamaganlar")],
             [KeyboardButton(text="📅 Sana bo'yicha hisobot")],
         ],
@@ -72,5 +73,66 @@ def admin_exercise_list_keyboard(exercises, action: str) -> InlineKeyboardMarkup
             buttons.append(
                 [InlineKeyboardButton(text=f"{icon} {ex['name']}", callback_data=f"{action}_ex:{ex['id']}")]
             )
+    buttons.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def admin_class_manager_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Sinf qo'shish", callback_data="add_class")],
+            [InlineKeyboardButton(text="🗑 Sinf o'chirish", callback_data="list_delete_class")],
+            [InlineKeyboardButton(text="📋 Sinflar ro'yxati", callback_data="list_classes")],
+        ]
+    )
+
+
+def admin_book_manager_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Kitob qo'shish", callback_data="add_book")],
+            [InlineKeyboardButton(text="🗑 Kitob o'chirish", callback_data="list_delete_book")],
+            [InlineKeyboardButton(text="📋 Kitoblar ro'yxati", callback_data="list_books")],
+        ]
+    )
+
+
+def class_selection_keyboard(classes: list[str], prefix: str = "select_class") -> InlineKeyboardMarkup:
+    buttons = []
+    # Two columns
+    for i in range(0, len(classes), 2):
+        row = [InlineKeyboardButton(text=classes[i], callback_data=f"{prefix}:{classes[i]}")]
+        if i + 1 < len(classes):
+            row.append(InlineKeyboardButton(text=classes[i+1], callback_data=f"{prefix}:{classes[i+1]}"))
+        buttons.append(row)
+    
+    if prefix != "select_class": # if it's for admin deletion or something else
+        buttons.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")])
+    
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def book_selection_keyboard(books: list[dict], last_book: str | None = None) -> InlineKeyboardMarkup:
+    buttons = []
+    
+    # Priority: last read book
+    if last_book:
+        buttons.append([InlineKeyboardButton(text=f"📖 Oxirgi: {last_book}", callback_data=f"select_book:{last_book}")])
+    
+    # Two columns for other books
+    for i in range(0, len(books), 2):
+        row = [InlineKeyboardButton(text=books[i]["name"], callback_data=f"select_book:{books[i]['name']}")]
+        if i + 1 < len(books):
+            row.append(InlineKeyboardButton(text=books[i+1]["name"], callback_data=f"select_book:{books[i+1]['name']}"))
+        buttons.append(row)
+        
+    buttons.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def book_delete_keyboard(books: list[dict]) -> InlineKeyboardMarkup:
+    buttons = []
+    for b in books:
+        buttons.append([InlineKeyboardButton(text=f"🗑 {b['name']}", callback_data=f"delete_book:{b['id']}:{b['name']}")])
     buttons.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)

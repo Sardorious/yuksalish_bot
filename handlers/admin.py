@@ -5,8 +5,12 @@ from aiogram.fsm.context import FSMContext
 
 import database as db
 from config import ADMIN_IDS
-from keyboards import admin_menu_keyboard, admin_exercise_list_keyboard
-from states import AddExercise, EditExercise, SetGroup
+from keyboards import (
+    admin_menu_keyboard, admin_exercise_list_keyboard, 
+    admin_class_manager_keyboard, class_selection_keyboard,
+    admin_book_manager_keyboard, book_selection_keyboard, book_delete_keyboard
+)
+from states import AddExercise, EditExercise, SetGroup, AddClass, AddBook
 
 router = Router()
 
@@ -133,35 +137,28 @@ async def btn_set_group(message: Message, state: FSMContext):
     if not await check_admin(message):
         return await message.answer("❌ Bu tugma faqat admin uchun.")
 
-    # Show existing links first
-    groups = await db.get_all_class_groups()
-    classes = await db.get_distinct_classes()
+    classes = await db.get_all_classes()
+    if not classes:
+        return await message.answer("📭 Hali sinflar qo'shilmagan. Avval sinf qo'shing.")
 
-    info = ""
-    if groups:
-        info = "📋 **Hozirgi bog'liqliklar:**\n"
-        for cls, cid in groups.items():
-            info += f"  • {cls} → `{cid}`\n"
-        info += "\n"
-
-    if classes:
-        info += "📌 **Ro'yxatdagi sinflar:**\n" + "\n".join(f"  • {c}" for c in classes) + "\n\n"
-
-    await state.set_state(SetGroup.waiting_for_class)
     await message.answer(
-        info + "Qaysi sinf uchun guruh ulaysiz?\n**Sinf nomini** yuboring (masalan: 5-A sinf):"
+        "Qaysi sinf uchun guruh ulaysiz? Ro'yxatdan tanlang:",
+        reply_markup=class_selection_keyboard(classes, "set_group_cls")
     )
 
 
-@router.message(SetGroup.waiting_for_class)
-async def fsm_set_group_class(message: Message, state: FSMContext):
-    await state.update_data(class_name=message.text.strip())
+@router.callback_query(F.data.startswith("set_group_cls:"))
+async def cb_set_group_class(call: CallbackQuery, state: FSMContext):
+    class_name = call.data.split(":")[1]
+    await state.update_data(class_name=class_name)
     await state.set_state(SetGroup.waiting_for_chat_id)
-    await message.answer(
+    await call.message.edit_text(
+        f"📌 Tanlangan sinf: **{class_name}**\n\n"
         "📲 Endi shu sinf Telegram guruhining **Chat ID** sini yuboring.\n\n"
         "💡 Guruh ID sini bilish uchun botni guruhga qo'shing va `@userinfobot` ga forward qiling.\n"
         "Guruh ID odatda `-100` bilan boshlanadi, masalan: `-1001234567890`"
     )
+    await call.answer()
 
 
 @router.message(SetGroup.waiting_for_chat_id)
@@ -179,6 +176,116 @@ async def fsm_set_group_chat_id(message: Message, state: FSMContext):
         f"Chat ID: `{chat_id}`",
         reply_markup=admin_menu_keyboard(),
     )
+
+
+# ── 🏫 Sinflarni boshqarish ───────────────────────────────────────────────────
+
+@router.message(F.text == "🏫 Sinflarni boshqarish")
+async def btn_manage_classes(message: Message):
+    if not await check_admin(message):
+        return await message.answer("❌ Bu tugma faqat admin uchun.")
+    await message.answer("🏫 **Sinflarni boshqarish menyusi**", reply_markup=admin_class_manager_keyboard())
+
+
+@router.callback_query(F.data == "add_class")
+async def cb_add_class_start(call: CallbackQuery, state: FSMContext):
+    await state.set_state(AddClass.waiting_for_name)
+    await call.message.edit_text("✏️ Yangi sinf nomini yuboring (masalan: 5-A sinf):")
+    await call.answer()
+
+
+@router.message(AddClass.waiting_for_name)
+async def fsm_add_class_name(message: Message, state: FSMContext):
+    name = message.text.strip()
+    success = await db.add_class(name)
+    await state.clear()
+    if success:
+        await message.answer(f"✅ **{name}** sinfi qo'shildi!", reply_markup=admin_menu_keyboard())
+    else:
+        await message.answer(f"⚠️ **{name}** sinfi allaqachon mavjud.", reply_markup=admin_menu_keyboard())
+
+
+@router.callback_query(F.data == "list_classes")
+async def cb_list_classes(call: CallbackQuery):
+    classes = await db.get_all_classes()
+    if not classes:
+        return await call.message.edit_text("📭 Sinflar ro'yxati bo'sh.", reply_markup=admin_class_manager_keyboard())
+    text = "📋 **Mavjud sinflar:**\n\n" + "\n".join(f"• {c}" for c in classes)
+    await call.message.edit_text(text, reply_markup=admin_class_manager_keyboard())
+    await call.answer()
+
+
+@router.callback_query(F.data == "list_delete_class")
+async def cb_list_delete_class(call: CallbackQuery):
+    classes = await db.get_all_classes()
+    if not classes:
+        return await call.message.edit_text("📭 O'chirish uchun sinflar yo'q.", reply_markup=admin_class_manager_keyboard())
+    await call.message.edit_text("O'chirish uchun sinfni tanlang:", reply_markup=class_selection_keyboard(classes, "delete_cls"))
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("delete_cls:"))
+async def cb_delete_class(call: CallbackQuery):
+    class_name = call.data.split(":")[1]
+    await db.delete_class(class_name)
+    await call.message.edit_text(f"🗑 **{class_name}** sinfi o'chirildi.")
+    await call.answer("O'chirildi!")
+
+
+# ── 📚 Kitoblarni boshqarish ─────────────────────────────────────────────────
+
+@router.message(F.text == "📚 Kitoblarni boshqarish")
+async def btn_manage_books(message: Message):
+    if not await check_admin(message):
+        return await message.answer("❌ Bu tugma faqat admin uchun.")
+    await message.answer("📚 **Kitoblarni boshqarish menyusi**", reply_markup=admin_book_manager_keyboard())
+
+
+@router.callback_query(F.data == "add_book")
+async def cb_add_book_start(call: CallbackQuery, state: FSMContext):
+    await state.set_state(AddBook.waiting_for_name)
+    await call.message.edit_text("✏️ Yangi kitob nomini yuboring:")
+    await call.answer()
+
+
+@router.message(AddBook.waiting_for_name)
+async def fsm_add_book_name(message: Message, state: FSMContext):
+    name = message.text.strip()
+    success = await db.add_book(name)
+    await state.clear()
+    if success:
+        await message.answer(f"✅ **{name}** kitobi qo'shildi!", reply_markup=admin_menu_keyboard())
+    else:
+        await message.answer(f"⚠️ **{name}** kitobi allaqachon mavjud.", reply_markup=admin_menu_keyboard())
+
+
+@router.callback_query(F.data == "list_books")
+async def cb_list_books(call: CallbackQuery):
+    books = await db.get_all_books()
+    if not books:
+        return await call.message.edit_text("📭 Kitoblar ro'yxati bo'sh.", reply_markup=admin_book_manager_keyboard())
+    text = "📋 **Mavjud kitoblar:**\n\n" + "\n".join(f"• {b['name']}" for b in books)
+    await call.message.edit_text(text, reply_markup=admin_book_manager_keyboard())
+    await call.answer()
+
+
+@router.callback_query(F.data == "list_delete_book")
+async def cb_list_delete_book(call: CallbackQuery):
+    books = await db.get_all_books()
+    if not books:
+        return await call.message.edit_text("📭 O'chirish uchun kitoblar yo'q.", reply_markup=admin_book_manager_keyboard())
+    await call.message.edit_text("O'chirish uchun kitobni tanlang:", reply_markup=book_delete_keyboard(books))
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("delete_book:"))
+async def cb_delete_book(call: CallbackQuery):
+    parts = call.data.split(":")
+    book_id = int(parts[1])
+    book_name = parts[2]
+    await db.delete_book(book_id)
+    await call.message.edit_text(f"🗑 **{book_name}** kitobi o'chirildi.")
+    await call.answer("O'chirildi!")
 
 
 # ── Bekor qilish (inline) ──────────────────────────────────────────────────────

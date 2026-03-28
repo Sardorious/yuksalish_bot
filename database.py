@@ -53,6 +53,32 @@ async def init_db():
                 chat_id    INTEGER NOT NULL
             )
         """)
+        # Predefined classes for registration
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS classes (
+                name TEXT PRIMARY KEY
+            )
+        """)
+        # Predefined books for reading log
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS books (
+                id   INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL
+            )
+        """)
+        
+        # Migration: populate classes and books table from existing data
+        await db.execute("""
+            INSERT OR IGNORE INTO classes (name)
+            SELECT DISTINCT class_name FROM users WHERE class_name IS NOT NULL
+            UNION
+            SELECT DISTINCT class_name FROM class_groups WHERE class_name IS NOT NULL
+        """)
+        await db.execute("""
+            INSERT OR IGNORE INTO books (name)
+            SELECT DISTINCT book_name FROM submissions WHERE type = 'reading' AND book_name IS NOT NULL
+        """)
+        
         await db.commit()
 
 
@@ -342,3 +368,64 @@ async def get_distinct_classes() -> list[str]:
         ) as cur:
             rows = await cur.fetchall()
             return [r[0] for r in rows]
+
+
+# ── Class management ───────────────────────────────────────────────────────────
+
+async def add_class(name: str) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        try:
+            await db.execute("INSERT INTO classes (name) VALUES (?)", (name,))
+            await db.commit()
+            return True
+        except aiosqlite.IntegrityError:
+            return False
+
+
+async def get_all_classes() -> list[str]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT name FROM classes ORDER BY name") as cur:
+            rows = await cur.fetchall()
+            return [r[0] for r in rows]
+
+
+async def delete_class(name: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM classes WHERE name = ?", (name,))
+        await db.commit()
+
+
+# ── Book management ────────────────────────────────────────────────────────────
+
+async def add_book(name: str) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        try:
+            await db.execute("INSERT INTO books (name) VALUES (?)", (name,))
+            await db.commit()
+            return True
+        except aiosqlite.IntegrityError:
+            return False
+
+
+async def get_all_books() -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT id, name FROM books ORDER BY name") as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def delete_book(book_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM books WHERE id = ?", (book_id,))
+        await db.commit()
+
+
+async def get_last_read_book(user_id: int) -> str | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT book_name FROM submissions WHERE user_id = ? AND type = 'reading' ORDER BY date DESC LIMIT 1",
+            (user_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else None

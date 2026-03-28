@@ -7,7 +7,10 @@ from aiogram.fsm.context import FSMContext
 
 import database as db
 from config import ADMIN_IDS
-from keyboards import student_menu_keyboard, teacher_menu_keyboard, admin_menu_keyboard, exercises_keyboard, skip_keyboard
+from keyboards import (
+    student_menu_keyboard, teacher_menu_keyboard, admin_menu_keyboard, 
+    exercises_keyboard, skip_keyboard, class_selection_keyboard, book_selection_keyboard
+)
 from states import Registration, ReadingLog, ExerciseMedia
 
 router = Router()
@@ -55,25 +58,40 @@ async def cmd_start(message: Message, state: FSMContext):
 
 @router.message(Registration.waiting_for_name)
 async def fsm_get_name(message: Message, state: FSMContext):
+    classes = await db.get_all_classes()
+    if not classes:
+        return await message.answer(
+            "⚠️ Tizimda hali sinflar mavjud emas. Iltimos, admindan sinflarni qo'shishni so'rang."
+        )
+    
     await state.update_data(name=message.text.strip())
     await state.set_state(Registration.waiting_for_class)
-    await message.answer("📚 Ajoyib! Endi **sinf nomingizni** yuboring (masalan: 5-A sinf):")
+    await message.answer(
+        "📚 Ajoyib! Endi **sinfingizni** ro'yxatdan tanlang:",
+        reply_markup=class_selection_keyboard(classes)
+    )
 
 
-@router.message(Registration.waiting_for_class)
-async def fsm_get_class(message: Message, state: FSMContext):
+@router.callback_query(Registration.waiting_for_class, F.data.startswith("select_class:"))
+async def fsm_get_class(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     name = data["name"]
-    class_name = message.text.strip()
-    await db.create_user(message.from_user.id, name, class_name)
+    class_name = call.data.split(":")[1]
+    
+    await db.create_user(call.from_user.id, name, class_name)
     await state.clear()
-    await message.answer(
+    
+    await call.message.edit_text(
         f"✅ **Muvaffaqiyatli ro'yxatdan o'tdingiz!**\n\n"
         f"👤 Ism: {name}\n"
         f"🏫 Sinf: {class_name}\n\n"
-        f"Quyidagi menyu orqali kunlik mashqlaringizni belgilang.",
-        reply_markup=student_menu_keyboard(),
+        f"Quyidagi menyu orqali kunlik mashqlaringizni belgilang."
     )
+    await call.message.answer(
+        "Asosiy menyu:",
+        reply_markup=student_menu_keyboard()
+    )
+    await call.answer()
 
 
 # ── 📋 Mashqlarni belgilash ────────────────────────────────────────────────────
@@ -149,15 +167,32 @@ async def btn_log_reading(message: Message, state: FSMContext):
     user = await db.get_user(message.from_user.id)
     if not user:
         return await message.answer("Iltimos, avval /start buyrug'i orqali ro'yxatdan o'ting.")
+    
+    books = await db.get_all_books()
+    if not books:
+        return await message.answer("📭 Hozircha kitoblar yo'q. Ustozingizdan qo'shishni so'rang!")
+    
+    last_book = await db.get_last_read_book(message.from_user.id)
+    
     await state.set_state(ReadingLog.waiting_for_book)
-    await message.answer("📚 Qaysi kitobni o'qiyapsiz? **Kitob nomini** yuboring:")
+    await message.answer(
+        "📚 Qaysi kitobni o'qiyapsiz? Ro'yxatdan tanlang:",
+        reply_markup=book_selection_keyboard(books, last_book)
+    )
+
+
+@router.callback_query(ReadingLog.waiting_for_book, F.data.startswith("select_book:"))
+async def cb_select_book(call: CallbackQuery, state: FSMContext):
+    book_name = call.data.split(":")[1]
+    await state.update_data(book_name=book_name)
+    await state.set_state(ReadingLog.waiting_for_pages)
+    await call.message.edit_text(f"📖 Tanlangan kitob: **{book_name}**\n\n📄 Bugun nechta **bet** o'qidingiz? Raqam yuboring:")
+    await call.answer()
 
 
 @router.message(ReadingLog.waiting_for_book)
-async def fsm_reading_book(message: Message, state: FSMContext):
-    await state.update_data(book_name=message.text.strip())
-    await state.set_state(ReadingLog.waiting_for_pages)
-    await message.answer("📄 Bugun nechta **bet** o'qidingiz? Raqam yuboring:")
+async def fsm_reading_book_manual(message: Message):
+    await message.answer("⚠️ Iltimos, kitobni ro'yxatdan tanlang. Agar kitob yo'q bo'lsa, ustozingizga murojaat qiling.")
 
 
 @router.message(ReadingLog.waiting_for_pages)

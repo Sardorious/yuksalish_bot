@@ -29,5 +29,13 @@ class ExerciseMedia(StatesGroup):
     waiting_for_video = State()
 
 
+class AddClass(StatesGroup):
+    waiting_for_name = State()
+
+
+class AddBook(StatesGroup):
+    waiting_for_name = State()
+
+
 class TeacherReport(StatesGroup):
     waiting_for_date = State()

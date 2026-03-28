@@ -13,8 +13,11 @@ from aiogram.fsm.context import FSMContext
 
 import database as db
 from config import ADMIN_IDS
-from keyboards import teacher_menu_keyboard, admin_menu_keyboard
-from states import TeacherReport
+from keyboards import (
+    teacher_menu_keyboard, admin_menu_keyboard,
+    admin_book_manager_keyboard, book_selection_keyboard, book_delete_keyboard
+)
+from states import TeacherReport, AddBook
 
 router = Router()
 
@@ -230,3 +233,61 @@ async def btn_missing(message: Message):
             text += f"\n📌 **{current_class}**\n"
         text += f"  • {s['name']}\n"
     await message.answer(text)
+
+
+# ── 📚 Kitoblarni boshqarish ─────────────────────────────────────────────────
+
+@router.message(F.text == "📚 Kitoblarni boshqarish")
+async def btn_manage_books(message: Message):
+    if not await check_teacher(message):
+        return await message.answer("❌ Bu tugma faqat o'qituvchi/admin uchun.")
+    await message.answer("📚 **Kitoblarni boshqarish menyusi**", reply_markup=admin_book_manager_keyboard())
+
+
+@router.callback_query(F.data == "add_book")
+async def cb_add_book_start(call: CallbackQuery, state: FSMContext):
+    await state.set_state(AddBook.waiting_for_name)
+    await call.message.edit_text("✏️ Yangi kitob nomini yuboring:")
+    await call.answer()
+
+
+@router.message(AddBook.waiting_for_name)
+async def fsm_add_book_name(message: Message, state: FSMContext):
+    name = message.text.strip()
+    success = await db.add_book(name)
+    await state.clear()
+    if success:
+        menu = await get_menu(message)
+        await message.answer(f"✅ **{name}** kitobi qo'shildi!", reply_markup=menu)
+    else:
+        menu = await get_menu(message)
+        await message.answer(f"⚠️ **{name}** kitobi allaqachon mavjud.", reply_markup=menu)
+
+
+@router.callback_query(F.data == "list_books")
+async def cb_list_books(call: CallbackQuery):
+    books = await db.get_all_books()
+    if not books:
+        return await call.message.edit_text("📭 Kitoblar ro'yxati bo'sh.", reply_markup=admin_book_manager_keyboard())
+    text = "📋 **Mavjud kitoblar:**\n\n" + "\n".join(f"• {b['name']}" for b in books)
+    await call.message.edit_text(text, reply_markup=admin_book_manager_keyboard())
+    await call.answer()
+
+
+@router.callback_query(F.data == "list_delete_book")
+async def cb_list_delete_book(call: CallbackQuery):
+    books = await db.get_all_books()
+    if not books:
+        return await call.message.edit_text("📭 O'chirish uchun kitoblar yo'q.", reply_markup=admin_book_manager_keyboard())
+    await call.message.edit_text("O'chirish uchun kitobni tanlang:", reply_markup=book_delete_keyboard(books))
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("delete_book:"))
+async def cb_delete_book(call: CallbackQuery):
+    parts = call.data.split(":")
+    book_id = int(parts[1])
+    book_name = parts[2]
+    await db.delete_book(book_id)
+    await call.message.edit_text(f"🗑 **{book_name}** kitobi o'chirildi.")
+    await call.answer("O'chirildi!")
