@@ -1,0 +1,24 @@
+# Environment secrets — never commit this
+.env
+
+# Antigravity internal metadata
+*.metadata.json
+*.resolved
+*.resolved.*
+
+# Database file
+*.db
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/

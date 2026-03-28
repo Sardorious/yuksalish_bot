@@ -1,0 +1,298 @@
+import aiosqlite
+from datetime import date
+
+DB_PATH = "exercise_bot.db"
+
+
+async def init_db():
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                telegram_id INTEGER PRIMARY KEY,
+                name        TEXT NOT NULL,
+                class_name  TEXT NOT NULL,
+                role        TEXT NOT NULL DEFAULT 'student'
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS exercises (
+                id     INTEGER PRIMARY KEY AUTOINCREMENT,
+                name   TEXT UNIQUE NOT NULL,
+                active BOOLEAN NOT NULL DEFAULT 1
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS submissions (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id       INTEGER NOT NULL,
+                date          DATE NOT NULL,
+                type          TEXT NOT NULL,          -- 'exercise' | 'reading'
+                exercise_id   INTEGER,
+                book_name     TEXT,
+                pages_read    INTEGER,
+                photo_file_id TEXT,                   -- Telegram file_id for book photo
+                FOREIGN KEY (user_id)     REFERENCES users(telegram_id),
+                FOREIGN KEY (exercise_id) REFERENCES exercises(id)
+            )
+        """)
+        # Separate table: one exercise video per student per day
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS exercise_media (
+                id      INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                date    DATE NOT NULL,
+                file_id TEXT NOT NULL,
+                UNIQUE (user_id, date),
+                FOREIGN KEY (user_id) REFERENCES users(telegram_id)
+            )
+        """)
+        await db.commit()
+
+
+# ── User operations ────────────────────────────────────────────────────────────
+
+async def get_user(telegram_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM users WHERE telegram_id = ?", (telegram_id,)
+        ) as cur:
+            return await cur.fetchone()
+
+
+async def create_user(telegram_id: int, name: str, class_name: str, role: str = "student"):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO users (telegram_id, name, class_name, role) VALUES (?, ?, ?, ?)",
+            (telegram_id, name, class_name, role),
+        )
+        await db.commit()
+
+
+async def get_all_students():
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM users WHERE role = 'student' ORDER BY class_name, name"
+        ) as cur:
+            return await cur.fetchall()
+
+
+async def promote_user(telegram_id: int, role: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET role = ? WHERE telegram_id = ?", (role, telegram_id)
+        )
+        await db.commit()
+
+
+# ── Exercise operations ────────────────────────────────────────────────────────
+
+async def add_exercise(name: str) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        try:
+            await db.execute("INSERT INTO exercises (name) VALUES (?)", (name,))
+            await db.commit()
+            return True
+        except aiosqlite.IntegrityError:
+            return False
+
+
+async def get_active_exercises():
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM exercises WHERE active = 1 ORDER BY name"
+        ) as cur:
+            return await cur.fetchall()
+
+
+async def get_all_exercises():
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM exercises ORDER BY name") as cur:
+            return await cur.fetchall()
+
+
+async def delete_exercise(exercise_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE exercises SET active = 0 WHERE id = ?", (exercise_id,)
+        )
+        await db.commit()
+
+
+async def update_exercise(exercise_id: int, new_name: str) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        try:
+            await db.execute(
+                "UPDATE exercises SET name = ? WHERE id = ?", (new_name, exercise_id)
+            )
+            await db.commit()
+            return True
+        except aiosqlite.IntegrityError:
+            return False
+
+
+# ── Submission operations ──────────────────────────────────────────────────────
+
+async def get_student_exercise_ids_today(user_id: int, target_date: date | None = None) -> list[int]:
+    if target_date is None:
+        target_date = date.today()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT exercise_id FROM submissions WHERE user_id = ? AND date = ? AND type = 'exercise'",
+            (user_id, target_date.isoformat()),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [r["exercise_id"] for r in rows]
+
+
+async def toggle_exercise_submission(user_id: int, exercise_id: int, target_date: date | None = None) -> bool:
+    """Returns True if added, False if removed."""
+    if target_date is None:
+        target_date = date.today()
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT id FROM submissions WHERE user_id = ? AND date = ? AND type = 'exercise' AND exercise_id = ?",
+            (user_id, target_date.isoformat(), exercise_id),
+        ) as cur:
+            existing = await cur.fetchone()
+        if existing:
+            await db.execute("DELETE FROM submissions WHERE id = ?", (existing[0],))
+        else:
+            await db.execute(
+                "INSERT INTO submissions (user_id, date, type, exercise_id) VALUES (?, ?, 'exercise', ?)",
+                (user_id, target_date.isoformat(), exercise_id),
+            )
+        await db.commit()
+        return existing is None
+
+
+async def save_exercise_video(user_id: int, file_id: str, target_date: date | None = None):
+    if target_date is None:
+        target_date = date.today()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO exercise_media (user_id, date, file_id) VALUES (?, ?, ?)",
+            (user_id, target_date.isoformat(), file_id),
+        )
+        await db.commit()
+
+
+async def get_exercise_video(user_id: int, target_date: date | None = None) -> str | None:
+    if target_date is None:
+        target_date = date.today()
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT file_id FROM exercise_media WHERE user_id = ? AND date = ?",
+            (user_id, target_date.isoformat()),
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else None
+
+
+async def add_reading_submission(
+    user_id: int,
+    book_name: str,
+    pages_read: int,
+    photo_file_id: str | None = None,
+    target_date: date | None = None,
+):
+    if target_date is None:
+        target_date = date.today()
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Replace any existing reading entry for this day
+        await db.execute(
+            "DELETE FROM submissions WHERE user_id = ? AND date = ? AND type = 'reading'",
+            (user_id, target_date.isoformat()),
+        )
+        await db.execute(
+            "INSERT INTO submissions (user_id, date, type, book_name, pages_read, photo_file_id) "
+            "VALUES (?, ?, 'reading', ?, ?, ?)",
+            (user_id, target_date.isoformat(), book_name, pages_read, photo_file_id),
+        )
+        await db.commit()
+
+
+async def get_reading_today(user_id: int, target_date: date | None = None):
+    if target_date is None:
+        target_date = date.today()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT book_name, pages_read, photo_file_id FROM submissions "
+            "WHERE user_id = ? AND date = ? AND type = 'reading'",
+            (user_id, target_date.isoformat()),
+        ) as cur:
+            return await cur.fetchone()
+
+
+# ── Report operations ──────────────────────────────────────────────────────────
+
+async def get_report_data(target_date: date) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM users WHERE role = 'student' ORDER BY class_name, name"
+        ) as cur:
+            students = await cur.fetchall()
+
+        result = []
+        for student in students:
+            uid = student["telegram_id"]
+
+            # Exercises done
+            async with db.execute(
+                """SELECT e.name FROM submissions s
+                   JOIN exercises e ON e.id = s.exercise_id
+                   WHERE s.user_id = ? AND s.date = ? AND s.type = 'exercise'""",
+                (uid, target_date.isoformat()),
+            ) as cur:
+                exercises = [r["name"] for r in await cur.fetchall()]
+
+            # Exercise video
+            async with db.execute(
+                "SELECT file_id FROM exercise_media WHERE user_id = ? AND date = ?",
+                (uid, target_date.isoformat()),
+            ) as cur:
+                ex_media = await cur.fetchone()
+
+            # Reading
+            async with db.execute(
+                "SELECT book_name, pages_read, photo_file_id FROM submissions "
+                "WHERE user_id = ? AND date = ? AND type = 'reading'",
+                (uid, target_date.isoformat()),
+            ) as cur:
+                reading = await cur.fetchone()
+
+            result.append(
+                {
+                    "name": student["name"],
+                    "class_name": student["class_name"],
+                    "telegram_id": uid,
+                    "exercises": exercises,
+                    "exercise_video": ex_media["file_id"] if ex_media else None,
+                    "reading": dict(reading) if reading else None,
+                }
+            )
+
+        return result
+
+
+async def get_missing_students(target_date: date | None = None):
+    if target_date is None:
+        target_date = date.today()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT u.* FROM users u
+               WHERE u.role = 'student'
+               AND u.telegram_id NOT IN (
+                   SELECT DISTINCT user_id FROM submissions WHERE date = ?
+               )
+               ORDER BY u.class_name, u.name""",
+            (target_date.isoformat(),),
+        ) as cur:
+            return await cur.fetchall()
