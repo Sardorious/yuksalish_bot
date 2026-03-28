@@ -8,7 +8,7 @@ from openpyxl.utils import get_column_letter
 
 from aiogram import Router, F
 from aiogram.filters import CommandStart
-from aiogram.types import Message, BufferedInputFile
+from aiogram.types import Message, BufferedInputFile, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
 import database as db
