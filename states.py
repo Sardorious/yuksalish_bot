@@ -37,5 +37,13 @@ class AddBook(StatesGroup):
     waiting_for_name = State()
 
 
+class EditClass(StatesGroup):
+    waiting_for_new_name = State()
+
+
+class EditBook(StatesGroup):
+    waiting_for_new_name = State()
+
+
 class TeacherReport(StatesGroup):
     waiting_for_date = State()

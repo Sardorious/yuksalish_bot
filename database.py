@@ -395,6 +395,19 @@ async def delete_class(name: str):
         await db.commit()
 
 
+async def update_class(old_name: str, new_name: str) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        try:
+            # Atomic update across all tables using the class name
+            await db.execute("UPDATE classes SET name = ? WHERE name = ?", (new_name, old_name))
+            await db.execute("UPDATE users SET class_name = ? WHERE class_name = ?", (new_name, old_name))
+            await db.execute("UPDATE class_groups SET class_name = ? WHERE class_name = ?", (new_name, old_name))
+            await db.commit()
+            return True
+        except aiosqlite.IntegrityError:
+            return False
+
+
 # ── Book management ────────────────────────────────────────────────────────────
 
 async def add_book(name: str) -> bool:
@@ -419,6 +432,21 @@ async def delete_book(book_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM books WHERE id = ?", (book_id,))
         await db.commit()
+
+
+async def update_book(book_id: int, new_name: str) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        try:
+            # We also update the book_name in submissions so history stays consistent
+            await db.execute(
+                "UPDATE submissions SET book_name = ? WHERE book_name = (SELECT name FROM books WHERE id = ?)",
+                (new_name, book_id)
+            )
+            await db.execute("UPDATE books SET name = ? WHERE id = ?", (new_name, book_id))
+            await db.commit()
+            return True
+        except aiosqlite.IntegrityError:
+            return False
 
 
 async def get_last_read_book(user_id: int) -> str | None:

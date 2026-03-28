@@ -81,6 +81,7 @@ def admin_class_manager_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="➕ Sinf qo'shish", callback_data="add_class")],
+            [InlineKeyboardButton(text="✏️ Sinf tahrirlash", callback_data="list_edit_class")],
             [InlineKeyboardButton(text="🗑 Sinf o'chirish", callback_data="list_delete_class")],
             [InlineKeyboardButton(text="📋 Sinflar ro'yxati", callback_data="list_classes")],
         ]
@@ -91,6 +92,7 @@ def admin_book_manager_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="➕ Kitob qo'shish", callback_data="add_book")],
+            [InlineKeyboardButton(text="✏️ Kitob tahrirlash", callback_data="list_edit_book")],
             [InlineKeyboardButton(text="🗑 Kitob o'chirish", callback_data="list_delete_book")],
             [InlineKeyboardButton(text="📋 Kitoblar ro'yxati", callback_data="list_books")],
         ]
@@ -134,5 +136,13 @@ def book_delete_keyboard(books: list[dict]) -> InlineKeyboardMarkup:
     buttons = []
     for b in books:
         buttons.append([InlineKeyboardButton(text=f"🗑 {b['name']}", callback_data=f"delete_book:{b['id']}:{b['name']}")])
+    buttons.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def book_edit_keyboard(books: list[dict]) -> InlineKeyboardMarkup:
+    buttons = []
+    for b in books:
+        buttons.append([InlineKeyboardButton(text=f"✏️ {b['name']}", callback_data=f"edit_book:{b['id']}")])
     buttons.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)

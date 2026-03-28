@@ -15,9 +15,10 @@ import database as db
 from config import ADMIN_IDS
 from keyboards import (
     teacher_menu_keyboard, admin_menu_keyboard,
-    admin_book_manager_keyboard, book_selection_keyboard, book_delete_keyboard
+    admin_book_manager_keyboard, book_selection_keyboard, book_delete_keyboard,
+    book_edit_keyboard
 )
-from states import TeacherReport, AddBook
+from states import TeacherReport, AddBook, EditBook
 
 router = Router()
 
@@ -291,3 +292,36 @@ async def cb_delete_book(call: CallbackQuery):
     await db.delete_book(book_id)
     await call.message.edit_text(f"🗑 **{book_name}** kitobi o'chirildi.")
     await call.answer("O'chirildi!")
+
+
+@router.callback_query(F.data == "list_edit_book")
+async def cb_list_edit_book(call: CallbackQuery):
+    books = await db.get_all_books()
+    if not books:
+        return await call.message.edit_text("📭 Tahrirlash uchun kitoblar yo'q.", reply_markup=admin_book_manager_keyboard())
+    await call.message.edit_text("Tahrirlash uchun kitobni tanlang:", reply_markup=book_edit_keyboard(books))
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("edit_book:"))
+async def cb_edit_book_select(call: CallbackQuery, state: FSMContext):
+    book_id = int(call.data.split(":")[1])
+    await state.update_data(edit_book_id=book_id)
+    await state.set_state(EditBook.waiting_for_new_name)
+    await call.message.edit_text("✏️ Kitobning yangi nomini yuboring:")
+    await call.answer()
+
+
+@router.message(EditBook.waiting_for_new_name)
+async def fsm_edit_book_name(message: Message, state: FSMContext):
+    data = await state.get_data()
+    book_id = data["edit_book_id"]
+    new_name = message.text.strip()
+    success = await db.update_book(book_id, new_name)
+    await state.clear()
+    if success:
+        menu = await get_menu(message)
+        await message.answer(f"✅ Kitob nomi **{new_name}** ga o'zgartirildi.", reply_markup=menu)
+    else:
+        menu = await get_menu(message)
+        await message.answer(f"⚠️ **{new_name}** nomi allaqachon mavjud yoki xatolik yuz berdi.", reply_markup=menu)
