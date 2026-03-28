@@ -1,21 +1,25 @@
 import io
 from datetime import date, datetime
+from itertools import groupby
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-from aiogram import Router
-from aiogram.filters import Command
+from aiogram import Router, F
+from aiogram.filters import CommandStart
 from aiogram.types import Message, BufferedInputFile
+from aiogram.fsm.context import FSMContext
 
 import database as db
 from config import ADMIN_IDS
+from keyboards import teacher_menu_keyboard, admin_menu_keyboard
+from states import TeacherReport
 
 router = Router()
 
 
-# ── Permission check ───────────────────────────────────────────────────────────
+# ── Ruxsat tekshiruvi ──────────────────────────────────────────────────────────
 
 async def check_teacher(message: Message) -> bool:
     user = await db.get_user(message.from_user.id)
@@ -24,21 +28,31 @@ async def check_teacher(message: Message) -> bool:
     )
 
 
+async def get_menu(message: Message):
+    user = await db.get_user(message.from_user.id)
+    if message.from_user.id in ADMIN_IDS or (user and user["role"] == "admin"):
+        return admin_menu_keyboard()
+    return teacher_menu_keyboard()
+
+
 def parse_date(date_str: str) -> date | None:
     try:
-        return datetime.strptime(date_str, "%Y-%m-%d").date()
+        return datetime.strptime(date_str.strip(), "%d.%m.%Y").date()
     except ValueError:
-        return None
+        try:
+            return datetime.strptime(date_str.strip(), "%Y-%m-%d").date()
+        except ValueError:
+            return None
 
 
-# ── Excel generation ───────────────────────────────────────────────────────────
+# ── Excel yaratish ─────────────────────────────────────────────────────────────
 
-async def generate_excel_report(target_date: date, report_data: list[dict]) -> io.BytesIO:
+def build_excel(target_date: date, students: list[dict], class_name: str | None = None) -> io.BytesIO:
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = f"Report {target_date}"
+    title_suffix = f" — {class_name}" if class_name else ""
+    ws.title = f"{target_date}{title_suffix}"[:31]
 
-    # ── Styles ──
     HDR_FONT  = Font(bold=True, color="FFFFFF", size=11)
     HDR_FILL  = PatternFill(start_color="1A3C5E", end_color="1A3C5E", fill_type="solid")
     ALT_FILL  = PatternFill(start_color="EAF3FB", end_color="EAF3FB", fill_type="solid")
@@ -49,35 +63,30 @@ async def generate_excel_report(target_date: date, report_data: list[dict]) -> i
         left=Side(style="thin"), right=Side(style="thin"),
         top=Side(style="thin"),  bottom=Side(style="thin"),
     )
-    YES_FONT  = Font(color="27AE60", bold=True)
-    NO_FONT   = Font(color="E74C3C")
+    YES_FONT = Font(color="27AE60", bold=True)
+    NO_FONT  = Font(color="E74C3C")
 
-    # ── Row 1: title ──
     ws.merge_cells("A1:H1")
     tc = ws["A1"]
-    tc.value     = f"📋 Exercise & Reading Report — {target_date.strftime('%d %B %Y')}"
-    tc.font      = TITLE_FONT
+    tc.value = f"Kunlik hisobot — {target_date.strftime('%d.%m.%Y')}{title_suffix}"
+    tc.font = TITLE_FONT
     tc.alignment = CENTER
     ws.row_dimensions[1].height = 28
 
-    # ── Row 2: headers ──
-    headers = ["#", "Name", "Class", "Exercises Done", "Video", "Book", "Pages", "Photo"]
+    headers = ["#", "Ism", "Sinf", "Bajarilgan mashqlar", "Video", "Kitob", "Betlar", "Rasm"]
     for col, h in enumerate(headers, 1):
         cell = ws.cell(row=2, column=col, value=h)
-        cell.font      = HDR_FONT
-        cell.fill      = HDR_FILL
+        cell.font = HDR_FONT
+        cell.fill = HDR_FILL
         cell.alignment = CENTER
-        cell.border    = THIN
+        cell.border = THIN
     ws.row_dimensions[2].height = 20
 
-    # ── Data rows ──
-    for idx, s in enumerate(report_data, 1):
-        row   = idx + 2
-        fill  = ALT_FILL if idx % 2 == 0 else None
-
-        has_video = "✅ Yes" if s["exercise_video"] else "❌ No"
-        has_photo = "✅ Yes" if (s["reading"] and s["reading"]["photo_file_id"]) else "❌ No"
-
+    for idx, s in enumerate(students, 1):
+        row  = idx + 2
+        fill = ALT_FILL if idx % 2 == 0 else None
+        has_video = "✅ Ha" if s["exercise_video"] else "❌ Yo'q"
+        has_photo = "✅ Ha" if (s["reading"] and s["reading"]["photo_file_id"]) else "❌ Yo'q"
         values = [
             idx,
             s["name"],
@@ -88,38 +97,31 @@ async def generate_excel_report(target_date: date, report_data: list[dict]) -> i
             s["reading"]["pages_read"] if s["reading"] else "—",
             has_photo,
         ]
-
         for col, val in enumerate(values, 1):
-            cell            = ws.cell(row=row, column=col, value=val)
-            cell.border     = THIN
-            cell.alignment  = CENTER if col != 4 else LEFT
+            cell = ws.cell(row=row, column=col, value=val)
+            cell.border = THIN
+            cell.alignment = CENTER if col != 4 else LEFT
             if fill:
                 cell.fill = fill
-            # Colour Yes/No cells
             if col in (5, 8):
-                cell.font = YES_FONT if "Yes" in str(val) else NO_FONT
-
+                cell.font = YES_FONT if "Ha" in str(val) else NO_FONT
         ws.row_dimensions[row].height = 18
 
-    # ── Column widths ──
     widths = [4, 22, 14, 42, 10, 28, 8, 10]
     for col, w in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(col)].width = w
 
-    # ── Summary row ──
-    total_row = len(report_data) + 3
+    total_row = len(students) + 3
     ws.merge_cells(f"A{total_row}:H{total_row}")
     sc = ws[f"A{total_row}"]
-    with_ex   = sum(1 for s in report_data if s["exercises"])
-    with_read = sum(1 for s in report_data if s["reading"])
-    with_vid  = sum(1 for s in report_data if s["exercise_video"])
-    with_pic  = sum(1 for s in report_data if s["reading"] and s["reading"]["photo_file_id"])
     sc.value = (
-        f"Total: {len(report_data)} students  |  "
-        f"Exercises: {with_ex}  |  Videos: {with_vid}  |  "
-        f"Reading: {with_read}  |  Photos: {with_pic}"
+        f"Jami: {len(students)} o'quvchi  |  "
+        f"Mashq: {sum(1 for s in students if s['exercises'])}  |  "
+        f"Video: {sum(1 for s in students if s['exercise_video'])}  |  "
+        f"O'qish: {sum(1 for s in students if s['reading'])}  |  "
+        f"Rasm: {sum(1 for s in students if s['reading'] and s['reading']['photo_file_id'])}"
     )
-    sc.font      = Font(bold=True, size=10, color="1A3C5E")
+    sc.font = Font(bold=True, size=10, color="1A3C5E")
     sc.alignment = CENTER
     ws.row_dimensions[total_row].height = 18
 
@@ -129,64 +131,98 @@ async def generate_excel_report(target_date: date, report_data: list[dict]) -> i
     return out
 
 
-# ── /report [date] ─────────────────────────────────────────────────────────────
-
-@router.message(Command("report"))
-async def cmd_report(message: Message):
-    if not await check_teacher(message):
-        return await message.answer("❌ Teacher/Admin only command.")
-
-    args = message.text.split()
-    if len(args) >= 2:
-        target_date = parse_date(args[1])
-        if not target_date:
-            return await message.answer("❌ Invalid date. Use format: /report YYYY-MM-DD")
-    else:
-        target_date = date.today()
-
-    await message.answer(f"⏳ Generating report for **{target_date.strftime('%d %B %Y')}**…")
-
+async def send_report(message: Message, target_date: date):
+    """Generate report, send to requester, then send per-class to each linked group."""
     report_data = await db.get_report_data(target_date)
     if not report_data:
-        return await message.answer("📭 No students registered yet.")
+        return await message.answer("📭 Hali hech qanday o'quvchi ro'yxatdan o'tmagan.")
 
-    excel_file = await generate_excel_report(target_date, report_data)
-    with_ex   = sum(1 for s in report_data if s["exercises"])
-    with_read = sum(1 for s in report_data if s["reading"])
-
+    # Send full report to requester
+    excel = build_excel(target_date, report_data)
     await message.answer_document(
-        BufferedInputFile(excel_file.read(), filename=f"report_{target_date}.xlsx"),
+        BufferedInputFile(excel.read(), filename=f"hisobot_{target_date}.xlsx"),
         caption=(
-            f"📊 **Daily Report — {target_date.strftime('%d %B %Y')}**\n"
-            f"👥 Students: {len(report_data)}\n"
-            f"💪 Logged exercises: {with_ex}\n"
-            f"📚 Logged reading: {with_read}"
+            f"📊 **Kunlik hisobot — {target_date.strftime('%d.%m.%Y')}**\n"
+            f"👥 O'quvchilar: {len(report_data)}\n"
+            f"💪 Mashq belgilagan: {sum(1 for s in report_data if s['exercises'])}\n"
+            f"📚 Kitob o'qigan: {sum(1 for s in report_data if s['reading'])}"
         ),
     )
 
+    # Send per-class report to each linked group
+    class_groups = await db.get_all_class_groups()
+    if not class_groups:
+        return
 
-# ── /missing [date] ────────────────────────────────────────────────────────────
+    # Group students by class
+    from itertools import groupby
+    sorted_data = sorted(report_data, key=lambda x: x["class_name"])
+    for class_name, group_iter in groupby(sorted_data, key=lambda x: x["class_name"]):
+        chat_id = class_groups.get(class_name)
+        if not chat_id:
+            continue
+        class_students = list(group_iter)
+        class_excel = build_excel(target_date, class_students, class_name=class_name)
+        caption = (
+            f"📊 **{class_name} — {target_date.strftime('%d.%m.%Y')} hisoboti**\n"
+            f"👥 O'quvchilar: {len(class_students)}\n"
+            f"💪 Mashq: {sum(1 for s in class_students if s['exercises'])}\n"
+            f"📚 O'qish: {sum(1 for s in class_students if s['reading'])}"
+        )
+        try:
+            await message.bot.send_document(
+                chat_id=chat_id,
+                document=BufferedInputFile(class_excel.read(), filename=f"hisobot_{class_name}_{target_date}.xlsx"),
+                caption=caption,
+            )
+        except Exception as e:
+            await message.answer(f"⚠️ **{class_name}** guruhiga yuborishda xatolik: {e}")
 
-@router.message(Command("missing"))
-async def cmd_missing(message: Message):
+
+# ── 📊 Bugungi hisobot ─────────────────────────────────────────────────────────
+
+@router.message(F.text == "📊 Bugungi hisobot")
+async def btn_report_today(message: Message):
     if not await check_teacher(message):
-        return await message.answer("❌ Teacher/Admin only command.")
+        return await message.answer("❌ Bu tugma faqat o'qituvchi/admin uchun.")
+    await message.answer(f"⏳ Bugungi hisobot tayyorlanmoqda...")
+    await send_report(message, date.today())
 
-    args = message.text.split()
-    if len(args) >= 2:
-        target_date = parse_date(args[1])
-        if not target_date:
-            return await message.answer("❌ Invalid date. Use format: /missing YYYY-MM-DD")
-    else:
-        target_date = date.today()
 
-    missing = await db.get_missing_students(target_date)
+# ── 📅 Sana bo'yicha hisobot ───────────────────────────────────────────────────
+
+@router.message(F.text == "📅 Sana bo'yicha hisobot")
+async def btn_report_by_date(message: Message, state: FSMContext):
+    if not await check_teacher(message):
+        return await message.answer("❌ Bu tugma faqat o'qituvchi/admin uchun.")
+    await state.set_state(TeacherReport.waiting_for_date)
+    await message.answer("📅 Hisobot sanasini yuboring:\nFormat: **28.03.2026**")
+
+
+@router.message(TeacherReport.waiting_for_date)
+async def fsm_report_date(message: Message, state: FSMContext):
+    target_date = parse_date(message.text)
+    if not target_date:
+        return await message.answer("❌ Noto'g'ri sana formati. Masalan: **28.03.2026**")
+    await state.clear()
+    await message.answer(f"⏳ {target_date.strftime('%d.%m.%Y')} uchun hisobot tayyorlanmoqda...")
+    await send_report(message, target_date)
+
+
+# ── ⚠️ Belgilamaganlar ─────────────────────────────────────────────────────────
+
+@router.message(F.text == "⚠️ Belgilamaganlar")
+async def btn_missing(message: Message):
+    if not await check_teacher(message):
+        return await message.answer("❌ Bu tugma faqat o'qituvchi/admin uchun.")
+
+    today = date.today()
+    missing = await db.get_missing_students(today)
     if not missing:
         return await message.answer(
-            f"🎉 All students have submitted for **{target_date.strftime('%d %B %Y')}**!"
+            f"🎉 Barcha o'quvchilar bugun ({today.strftime('%d.%m.%Y')}) belgilagan!"
         )
-
-    text = f"⚠️ **Missing submissions — {target_date.strftime('%d %B %Y')}:**\n"
+    text = f"⚠️ **Belgilamaganlar — {today.strftime('%d.%m.%Y')}:**\n"
     current_class = None
     for s in missing:
         if s["class_name"] != current_class:

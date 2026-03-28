@@ -46,6 +46,13 @@ async def init_db():
                 FOREIGN KEY (user_id) REFERENCES users(telegram_id)
             )
         """)
+        # Per-class Telegram group chat IDs
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS class_groups (
+                class_name TEXT PRIMARY KEY,
+                chat_id    INTEGER NOT NULL
+            )
+        """)
         await db.commit()
 
 
@@ -296,3 +303,42 @@ async def get_missing_students(target_date: date | None = None):
             (target_date.isoformat(),),
         ) as cur:
             return await cur.fetchall()
+
+
+# ── Class group operations ─────────────────────────────────────────────────────
+
+async def set_class_group(class_name: str, chat_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO class_groups (class_name, chat_id) VALUES (?, ?)",
+            (class_name, chat_id),
+        )
+        await db.commit()
+
+
+async def get_class_group(class_name: str) -> int | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT chat_id FROM class_groups WHERE class_name = ?", (class_name,)
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else None
+
+
+async def get_all_class_groups() -> dict[str, int]:
+    """Returns {class_name: chat_id} for all linked classes."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT class_name, chat_id FROM class_groups") as cur:
+            rows = await cur.fetchall()
+            return {r["class_name"]: r["chat_id"] for r in rows}
+
+
+async def get_distinct_classes() -> list[str]:
+    """Returns all class names that have at least one student."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT DISTINCT class_name FROM users WHERE role = 'student' ORDER BY class_name"
+        ) as cur:
+            rows = await cur.fetchall()
+            return [r[0] for r in rows]

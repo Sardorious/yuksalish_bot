@@ -6,35 +6,58 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
 import database as db
-from keyboards import main_menu_keyboard, exercises_keyboard, skip_keyboard
+from config import ADMIN_IDS
+from keyboards import student_menu_keyboard, teacher_menu_keyboard, admin_menu_keyboard, exercises_keyboard, skip_keyboard
 from states import Registration, ReadingLog, ExerciseMedia
 
 router = Router()
 
 
-# ── /start — registration flow ─────────────────────────────────────────────────
+# ── Yordamchi: rolga mos klaviatura ───────────────────────────────────────────
+
+async def get_role_keyboard(user_id: int, db_role: str):
+    if user_id in ADMIN_IDS or db_role == "admin":
+        return admin_menu_keyboard()
+    elif db_role == "teacher":
+        return teacher_menu_keyboard()
+    else:
+        return student_menu_keyboard()
+
+
+# ── /start ─────────────────────────────────────────────────────────────────────
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
+    await state.clear()
     user = await db.get_user(message.from_user.id)
     if user:
+        keyboard = await get_role_keyboard(message.from_user.id, user["role"])
+        role_text = {
+            "admin": "Admin",
+            "teacher": "O'qituvchi",
+            "student": "O'quvchi",
+        }.get(user["role"], "Foydalanuvchi")
         await message.answer(
-            f"👋 Welcome back, **{user['name']}**!\n\nWhat would you like to log today?",
-            reply_markup=main_menu_keyboard(),
+            f"👋 Qaytib kelganingizdan xursandmiz, **{user['name']}**! ({role_text})\n\n"
+            f"Quyidagi tugmalardan birini tanlang:",
+            reply_markup=keyboard,
         )
         return
+
     await state.set_state(Registration.waiting_for_name)
     await message.answer(
-        "👋 Welcome to the **Exercise Tracker Bot**!\n\n"
-        "Let's get you registered. Please send your **full name**:"
+        "👋 **Mashq kuzatuv botiga** xush kelibsiz!\n\n"
+        "Keling, ro'yxatdan o'tamiz. Iltimos, **to'liq ismingizni** yuboring:"
     )
 
+
+# ── Ro'yxatdan o'tish ──────────────────────────────────────────────────────────
 
 @router.message(Registration.waiting_for_name)
 async def fsm_get_name(message: Message, state: FSMContext):
     await state.update_data(name=message.text.strip())
     await state.set_state(Registration.waiting_for_class)
-    await message.answer("📚 Great! Now send your **class name** (e.g. Grade 5A):")
+    await message.answer("📚 Ajoyib! Endi **sinf nomingizni** yuboring (masalan: 5-A sinf):")
 
 
 @router.message(Registration.waiting_for_class)
@@ -45,27 +68,28 @@ async def fsm_get_class(message: Message, state: FSMContext):
     await db.create_user(message.from_user.id, name, class_name)
     await state.clear()
     await message.answer(
-        f"✅ **Registered successfully!**\n\n"
-        f"👤 Name: {name}\n"
-        f"🏫 Class: {class_name}\n\n"
-        f"Use the menu below to start logging.",
-        reply_markup=main_menu_keyboard(),
+        f"✅ **Muvaffaqiyatli ro'yxatdan o'tdingiz!**\n\n"
+        f"👤 Ism: {name}\n"
+        f"🏫 Sinf: {class_name}\n\n"
+        f"Quyidagi menyu orqali kunlik mashqlaringizni belgilang.",
+        reply_markup=student_menu_keyboard(),
     )
 
 
-# ── 📋 Log Exercises ───────────────────────────────────────────────────────────
+# ── 📋 Mashqlarni belgilash ────────────────────────────────────────────────────
 
-@router.message(F.text == "📋 Log Exercises")
+@router.message(F.text == "📋 Mashqlarni belgilash")
 async def btn_log_exercises(message: Message):
     user = await db.get_user(message.from_user.id)
     if not user:
-        return await message.answer("Please /start to register first.")
+        return await message.answer("Iltimos, avval /start buyrug'i orqali ro'yxatdan o'ting.")
     exercises = await db.get_active_exercises()
     if not exercises:
-        return await message.answer("📭 No exercises available yet. Ask your admin to add some!")
+        return await message.answer("📭 Hozircha mashqlar yo'q. Admindan qo'shishni so'rang!")
     done_ids = await db.get_student_exercise_ids_today(message.from_user.id)
     await message.answer(
-        "📋 **Today's Exercises**\nTap to check ✅ / uncheck. Press **Done** when finished.",
+        "📋 **Bugungi mashqlar**\n"
+        "Belgilash ✅ / bekor qilish uchun bosing. Tugatgach **Tayyor** tugmasini bosing.",
         reply_markup=exercises_keyboard(exercises, done_ids),
     )
 
@@ -87,53 +111,53 @@ async def cb_exercises_done(call: CallbackQuery, state: FSMContext):
     done_names = [ex["name"] for ex in exercises if ex["id"] in done_ids]
 
     if done_names:
-        summary = "✅ **Exercises logged:**\n" + "\n".join(f"  • {n}" for n in done_names)
+        summary = "✅ **Belgilangan mashqlar:**\n" + "\n".join(f"  • {n}" for n in done_names)
     else:
-        summary = "📭 No exercises selected yet."
+        summary = "📭 Hech qanday mashq tanlanmagan."
 
     await call.message.edit_text(summary)
-    await call.answer("Saved!")
+    await call.answer("Saqlandi!")
 
-    # Ask for optional exercise video
     await state.set_state(ExerciseMedia.waiting_for_video)
     await call.message.answer(
-        "📹 Want to upload a **video** of your exercises? (optional)\n"
-        "Send a video, or tap **Skip**.",
+        "📹 Mashqlaringizning **videosini** yuklashni xohlaysizmi? (ixtiyoriy)\n"
+        "Video yuboring yoki **O'tkazib yuborish** tugmasini bosing.",
         reply_markup=skip_keyboard("skip_exercise_video"),
     )
 
 
 @router.message(ExerciseMedia.waiting_for_video, F.video)
 async def fsm_exercise_video(message: Message, state: FSMContext):
-    file_id = message.video.file_id
-    await db.save_exercise_video(message.from_user.id, file_id)
+    await db.save_exercise_video(message.from_user.id, message.video.file_id)
     await state.clear()
-    await message.answer("🎥 Video uploaded! Great job 💪", reply_markup=main_menu_keyboard())
+    user = await db.get_user(message.from_user.id)
+    keyboard = await get_role_keyboard(message.from_user.id, user["role"] if user else "student")
+    await message.answer("🎥 Video yuklandi! Zo'r ish 💪", reply_markup=keyboard)
 
 
 @router.callback_query(F.data == "skip_exercise_video", ExerciseMedia.waiting_for_video)
 async def cb_skip_exercise_video(call: CallbackQuery, state: FSMContext):
     await state.clear()
-    await call.message.edit_text("⏭ Video skipped.")
+    await call.message.edit_text("⏭ Video o'tkazib yuborildi.")
     await call.answer()
 
 
-# ── 📚 Log Reading ─────────────────────────────────────────────────────────────
+# ── 📚 Kitob o'qishni belgilash ───────────────────────────────────────────────
 
-@router.message(F.text == "📚 Log Reading")
+@router.message(F.text == "📚 Kitob o'qishni belgilash")
 async def btn_log_reading(message: Message, state: FSMContext):
     user = await db.get_user(message.from_user.id)
     if not user:
-        return await message.answer("Please /start to register first.")
+        return await message.answer("Iltimos, avval /start buyrug'i orqali ro'yxatdan o'ting.")
     await state.set_state(ReadingLog.waiting_for_book)
-    await message.answer("📚 What book are you reading? Send the **book name**:")
+    await message.answer("📚 Qaysi kitobni o'qiyapsiz? **Kitob nomini** yuboring:")
 
 
 @router.message(ReadingLog.waiting_for_book)
 async def fsm_reading_book(message: Message, state: FSMContext):
     await state.update_data(book_name=message.text.strip())
     await state.set_state(ReadingLog.waiting_for_pages)
-    await message.answer("📄 How many **pages** did you read today? Send a number:")
+    await message.answer("📄 Bugun nechta **bet** o'qidingiz? Raqam yuboring:")
 
 
 @router.message(ReadingLog.waiting_for_pages)
@@ -143,13 +167,12 @@ async def fsm_reading_pages(message: Message, state: FSMContext):
         if pages <= 0:
             raise ValueError
     except ValueError:
-        return await message.answer("⚠️ Please send a valid number of pages (e.g. 15).")
-
+        return await message.answer("⚠️ Iltimos, to'g'ri bet raqamini yuboring (masalan: 15).")
     await state.update_data(pages_read=pages)
     await state.set_state(ReadingLog.waiting_for_photo)
     await message.answer(
-        "📷 Want to upload a **photo** of the book? (optional)\n"
-        "Send a photo, or tap **Skip**.",
+        "📷 Kitobning **rasmini** yuklashni xohlaysizmi? (ixtiyoriy)\n"
+        "Rasm yuboring yoki **O'tkazib yuborish** tugmasini bosing.",
         reply_markup=skip_keyboard("skip_book_photo"),
     )
 
@@ -157,20 +180,19 @@ async def fsm_reading_pages(message: Message, state: FSMContext):
 @router.message(ReadingLog.waiting_for_photo, F.photo)
 async def fsm_reading_photo(message: Message, state: FSMContext):
     data = await state.get_data()
-    photo_file_id = message.photo[-1].file_id  # highest resolution
     await db.add_reading_submission(
-        message.from_user.id,
-        data["book_name"],
-        data["pages_read"],
-        photo_file_id=photo_file_id,
+        message.from_user.id, data["book_name"], data["pages_read"],
+        photo_file_id=message.photo[-1].file_id,
     )
     await state.clear()
+    user = await db.get_user(message.from_user.id)
+    keyboard = await get_role_keyboard(message.from_user.id, user["role"] if user else "student")
     await message.answer(
-        f"✅ **Reading logged!**\n\n"
-        f"📖 Book: {data['book_name']}\n"
-        f"📄 Pages: {data['pages_read']}\n"
-        f"📷 Photo: uploaded",
-        reply_markup=main_menu_keyboard(),
+        f"✅ **Kitob o'qish belgilandi!**\n\n"
+        f"📖 Kitob: {data['book_name']}\n"
+        f"📄 Betlar: {data['pages_read']}\n"
+        f"📷 Rasm: yuklandi ✅",
+        reply_markup=keyboard,
     )
 
 
@@ -178,27 +200,24 @@ async def fsm_reading_photo(message: Message, state: FSMContext):
 async def cb_skip_book_photo(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     await db.add_reading_submission(
-        call.from_user.id,
-        data["book_name"],
-        data["pages_read"],
-        photo_file_id=None,
+        call.from_user.id, data["book_name"], data["pages_read"], photo_file_id=None,
     )
     await state.clear()
     await call.message.edit_text(
-        f"✅ **Reading logged!**\n\n"
-        f"📖 Book: {data['book_name']}\n"
-        f"📄 Pages: {data['pages_read']}"
+        f"✅ **Kitob o'qish belgilandi!**\n\n"
+        f"📖 Kitob: {data['book_name']}\n"
+        f"📄 Betlar: {data['pages_read']}"
     )
     await call.answer()
 
 
-# ── 📊 My Stats Today ──────────────────────────────────────────────────────────
+# ── 📊 Bugungi natijalarim ─────────────────────────────────────────────────────
 
-@router.message(F.text == "📊 My Stats Today")
+@router.message(F.text == "📊 Bugungi natijalarim")
 async def btn_my_stats(message: Message):
     user = await db.get_user(message.from_user.id)
     if not user:
-        return await message.answer("Please /start to register first.")
+        return await message.answer("Iltimos, avval /start buyrug'i orqali ro'yxatdan o'ting.")
 
     today = date.today()
     done_ids = await db.get_student_exercise_ids_today(message.from_user.id)
@@ -207,21 +226,19 @@ async def btn_my_stats(message: Message):
     video = await db.get_exercise_video(message.from_user.id)
     reading = await db.get_reading_today(message.from_user.id)
 
-    text = f"📊 **Your Stats — {today.strftime('%d %B %Y')}**\n\n"
-
+    text = f"📊 **Bugungi natijalar — {today.strftime('%d.%m.%Y')}**\n\n"
     if done_names:
-        text += "💪 **Exercises:**\n" + "\n".join(f"  ✅ {n}" for n in done_names)
-        text += f"\n  🎥 Video: {'uploaded' if video else 'not uploaded'}\n\n"
+        text += "💪 **Mashqlar:**\n" + "\n".join(f"  ✅ {n}" for n in done_names)
+        text += f"\n  🎥 Video: {'yuklandi ✅' if video else 'yuklanmagan'}\n\n"
     else:
-        text += "💪 **Exercises:** None logged\n\n"
-
+        text += "💪 **Mashqlar:** Hali belgilanmagan\n\n"
     if reading:
         text += (
-            f"📚 **Reading:**\n"
-            f"  📖 {reading['book_name']} — {reading['pages_read']} pages\n"
-            f"  📷 Photo: {'uploaded' if reading['photo_file_id'] else 'not uploaded'}"
+            f"📚 **Kitob o'qish:**\n"
+            f"  📖 {reading['book_name']} — {reading['pages_read']} bet\n"
+            f"  📷 Rasm: {'yuklandi ✅' if reading['photo_file_id'] else 'yuklanmagan'}"
         )
     else:
-        text += "📚 **Reading:** None logged"
+        text += "📚 **Kitob o'qish:** Hali belgilanmagan"
 
     await message.answer(text)
