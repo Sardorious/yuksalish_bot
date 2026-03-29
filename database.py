@@ -1,5 +1,6 @@
-﻿import aiosqlite
+import aiosqlite
 from datetime import date
+import sqlite3
 
 DB_PATH = "exercise_bot.db"
 
@@ -11,9 +12,21 @@ async def init_db():
                 telegram_id INTEGER PRIMARY KEY,
                 name        TEXT NOT NULL,
                 class_name  TEXT NOT NULL,
-                role        TEXT NOT NULL DEFAULT 'student'
+                role        TEXT NOT NULL DEFAULT 'student',
+                phone       TEXT,
+                is_active   BOOLEAN NOT NULL DEFAULT 1
             )
         """)
+        # DB migration manually if columns don't exist
+        try:
+            await db.execute("ALTER TABLE users ADD COLUMN phone TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            await db.execute("ALTER TABLE users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1")
+        except sqlite3.OperationalError:
+            pass
+
         await db.execute("""
             CREATE TABLE IF NOT EXISTS exercises (
                 id     INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,12 +115,22 @@ async def get_user(telegram_id: int):
             return await cur.fetchone()
 
 
-async def create_user(telegram_id: int, name: str, class_name: str, role: str = "student"):
+async def create_user(telegram_id: int, name: str, class_name: str, phone: str = None, role: str = "student"):
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "INSERT OR REPLACE INTO users (telegram_id, name, class_name, role) VALUES (?, ?, ?, ?)",
-            (telegram_id, name, class_name, role),
-        )
+        # Check if user exists
+        async with db.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,)) as cur:
+            existing = await cur.fetchone()
+        
+        if existing:
+            await db.execute(
+                "UPDATE users SET name = ?, class_name = ?, phone = COALESCE(?, phone), role = ?, is_active = 1 WHERE telegram_id = ?",
+                (name, class_name, phone, role, telegram_id),
+            )
+        else:
+            await db.execute(
+                "INSERT INTO users (telegram_id, name, class_name, phone, role, is_active) VALUES (?, ?, ?, ?, ?, 1)",
+                (telegram_id, name, class_name, phone, role),
+            )
         await db.commit()
 
 
@@ -115,10 +138,28 @@ async def get_all_students():
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM users WHERE role = 'student' ORDER BY class_name, name"
+            "SELECT * FROM users WHERE role = 'student' AND is_active = 1 ORDER BY class_name, name"
         ) as cur:
             return await cur.fetchall()
 
+async def get_students_by_class(class_name: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM users WHERE role = 'student' AND class_name = ? AND is_active = 1 ORDER BY name",
+            (class_name,)
+        ) as cur:
+            return await cur.fetchall()
+
+async def deactivate_user(telegram_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET is_active = 0 WHERE telegram_id = ?", (telegram_id,))
+        await db.commit()
+
+async def update_user_class(telegram_id: int, new_class_name: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET class_name = ? WHERE telegram_id = ?", (new_class_name, telegram_id))
+        await db.commit()
 
 async def promote_user(telegram_id: int, role: str):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -319,7 +360,7 @@ async def get_today_media_list(target_date=None) -> dict:
             """SELECT u.name, u.class_name, em.file_id as video_file_id
                FROM exercise_media em
                JOIN users u ON u.telegram_id = em.user_id
-               WHERE em.date = ?
+               WHERE em.date = ? AND u.is_active = 1
                ORDER BY u.class_name, u.name""",
             (target_date.isoformat(),),
         ) as cur:
@@ -328,7 +369,7 @@ async def get_today_media_list(target_date=None) -> dict:
             """SELECT u.name, u.class_name, s.book_name, s.pages_read, s.photo_file_id
                FROM submissions s
                JOIN users u ON u.telegram_id = s.user_id
-               WHERE s.date = ? AND s.type = 'reading' AND s.photo_file_id IS NOT NULL
+               WHERE s.date = ? AND s.type = 'reading' AND s.photo_file_id IS NOT NULL AND u.is_active = 1
                ORDER BY u.class_name, u.name""",
             (target_date.isoformat(),),
         ) as cur:
@@ -340,7 +381,7 @@ async def get_report_data(target_date: date) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM users WHERE role = 'student' ORDER BY class_name, name"
+            "SELECT * FROM users WHERE role = 'student' AND is_active = 1 ORDER BY class_name, name"
         ) as cur:
             students = await cur.fetchall()
 
@@ -393,7 +434,7 @@ async def get_missing_students(target_date: date | None = None):
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT u.* FROM users u
-               WHERE u.role = 'student'
+               WHERE u.role = 'student' AND u.is_active = 1
                AND u.telegram_id NOT IN (
                    SELECT DISTINCT user_id FROM submissions WHERE date = ?
                )
@@ -435,8 +476,9 @@ async def get_all_class_groups() -> dict[str, int]:
 async def get_distinct_classes() -> list[str]:
     """Returns all class names that have at least one student."""
     async with aiosqlite.connect(DB_PATH) as db:
+        # Check active users
         async with db.execute(
-            "SELECT DISTINCT class_name FROM users WHERE role = 'student' ORDER BY class_name"
+            "SELECT DISTINCT class_name FROM users WHERE role = 'student' AND is_active = 1 ORDER BY class_name"
         ) as cur:
             rows = await cur.fetchall()
             return [r[0] for r in rows]
@@ -529,8 +571,3 @@ async def get_last_read_book(user_id: int) -> str | None:
         ) as cur:
             row = await cur.fetchone()
             return row[0] if row else None
-
-
-
-
-

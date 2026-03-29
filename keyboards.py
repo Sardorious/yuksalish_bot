@@ -1,4 +1,4 @@
-﻿from aiogram.types import (
+from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     ReplyKeyboardMarkup,
@@ -6,6 +6,14 @@
 )
 
 # ── Role-based reply keyboards ─────────────────────────────────────────────────
+
+def request_phone_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📱 Raqamni yuborish", request_contact=True)]
+        ],
+        resize_keyboard=True,
+    )
 
 def student_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
@@ -33,7 +41,7 @@ def admin_menu_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="➕ Mashq qo'shish"), KeyboardButton(text="🗑 Mashq o'chirish")],
             [KeyboardButton(text="✏️ Mashq tahrirlash"), KeyboardButton(text="📋 Mashqlar ro'yxati")],
             [KeyboardButton(text="🏫 Sinflarni boshqarish"), KeyboardButton(text="📚 Kitoblarni boshqarish")],
-            [KeyboardButton(text="🔗 Sinf guruhini ulash"), KeyboardButton(text="👥 O'quvchilar ro'yxati")],
+            [KeyboardButton(text="🔗 Sinf guruhini ulash"), KeyboardButton(text="👥 O'quvchilarni boshqarish")],
             [KeyboardButton(text="📊 Bugungi hisobot"), KeyboardButton(text="⚠️ Belgilamaganlar")],
             [KeyboardButton(text="📅 Sana bo'yicha hisobot")],
         ],
@@ -98,6 +106,15 @@ def admin_book_manager_keyboard() -> InlineKeyboardMarkup:
         ]
     )
 
+def admin_student_manager_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Barcha o'quvchilar ro'yxati", callback_data="list_all_students")],
+            [InlineKeyboardButton(text="✏️ Sinfni o'zgartirish", callback_data="edit_student_class")],
+            [InlineKeyboardButton(text="🗑 O'quvchini o'chirish", callback_data="delete_student_from_db")],
+        ]
+    )
+
 
 def class_selection_keyboard(classes: list[str], prefix: str = "select_class") -> InlineKeyboardMarkup:
     buttons = []
@@ -111,6 +128,14 @@ def class_selection_keyboard(classes: list[str], prefix: str = "select_class") -
     if prefix != "select_class": # if it's for admin deletion or something else
         buttons.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")])
     
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def student_selection_keyboard(students: list[dict], action: str) -> InlineKeyboardMarkup:
+    buttons = []
+    for s in students:
+        buttons.append([InlineKeyboardButton(text=f"{s['name']}", callback_data=f"{action}:{s['telegram_id']}")])
+    buttons.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -153,4 +178,3 @@ def edit_today_keyboard(section: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="✏️ O'zgartirish", callback_data=cb)]]
     )
-

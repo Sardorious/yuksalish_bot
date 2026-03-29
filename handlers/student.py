@@ -1,8 +1,8 @@
-﻿from datetime import date
+from datetime import date
 
 from aiogram import Router, F
 from aiogram.filters import CommandStart
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
 from aiogram.fsm.context import FSMContext
 
 import database as db
@@ -10,7 +10,7 @@ from config import ADMIN_IDS
 from keyboards import (
     student_menu_keyboard, teacher_menu_keyboard, admin_menu_keyboard,
     exercises_keyboard, skip_keyboard, class_selection_keyboard, book_selection_keyboard,
-    edit_today_keyboard,
+    edit_today_keyboard, request_phone_keyboard
 )
 from states import Registration, ReadingLog, ExerciseMedia
 
@@ -34,7 +34,7 @@ async def get_role_keyboard(user_id: int, db_role: str):
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     user = await db.get_user(message.from_user.id)
-    if user:
+    if user and user["is_active"] == 1:
         keyboard = await get_role_keyboard(message.from_user.id, user["role"])
         role_text = {
             "admin": "Admin",
@@ -51,7 +51,8 @@ async def cmd_start(message: Message, state: FSMContext):
     await state.set_state(Registration.waiting_for_name)
     await message.answer(
         "👋 **Mashq kuzatuv botiga** xush kelibsiz!\n\n"
-        "Keling, ro'yxatdan o'tamiz. Iltimos, **to'liq ismingizni** yuboring:"
+        "Keling, ro'yxatdan o'tamiz. Iltimos, **to'liq ismingizni** yuboring:",
+        reply_markup=ReplyKeyboardRemove()
     )
 
 
@@ -65,25 +66,46 @@ async def fsm_get_name(message: Message, state: FSMContext):
             "⚠️ Tizimda hali sinflar mavjud emas. Iltimos, admindan sinflarni qo'shishni so'rang."
         )
     await state.update_data(name=message.text.strip())
+    
+    await state.set_state(Registration.waiting_for_phone)
+    await message.answer(
+        "📱 Endi, iltimos, **telefon raqamingizni** yuboring:\n"
+        "Pastdagi 'Raqamni yuborish' tugmasini bosing yoki +998... shaklida yozing.",
+        reply_markup=request_phone_keyboard()
+    )
+
+@router.message(Registration.waiting_for_phone, F.contact | F.text)
+async def fsm_get_phone(message: Message, state: FSMContext):
+    if message.contact:
+        phone = message.contact.phone_number
+    else:
+        phone = message.text.strip()
+        
+    await state.update_data(phone=phone)
+    classes = await db.get_all_classes()
+    
     await state.set_state(Registration.waiting_for_class)
     await message.answer(
         "📚 Ajoyib! Endi **sinfingizni** ro'yxatdan tanlang:",
         reply_markup=class_selection_keyboard(classes)
     )
 
-
 @router.callback_query(Registration.waiting_for_class, F.data.startswith("select_class:"))
 async def fsm_get_class(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     name = data["name"]
+    phone = data.get("phone", "")
     class_name = call.data.split(":")[1]
-    await db.create_user(call.from_user.id, name, class_name)
+    
+    await db.create_user(call.from_user.id, name, class_name, phone=phone)
     await state.clear()
+    
     await call.message.edit_text(
         f"✅ **Muvaffaqiyatli ro'yxatdan o'tdingiz!**\n\n"
         f"👤 Ism: {name}\n"
+        f"📞 Telefon: {phone}\n"
         f"🏫 Sinf: {class_name}\n\n"
-        f"Quyidagi menyu orqali kunlik mashqlaringizni belgilang."
+        f"Quyidagi menyu orqali joriy mashqlaringizni belgilang."
     )
     await call.message.answer("Asosiy menyu:", reply_markup=student_menu_keyboard())
     await call.answer()
@@ -94,7 +116,7 @@ async def fsm_get_class(call: CallbackQuery, state: FSMContext):
 @router.message(F.text == "📋 Mashqlarni belgilash")
 async def btn_log_exercises(message: Message):
     user = await db.get_user(message.from_user.id)
-    if not user:
+    if not user or user["is_active"] == 0:
         return await message.answer("Iltimos, avval /start buyrug'i orqali ro'yxatdan o'ting.")
 
     # Already submitted today?
@@ -195,7 +217,7 @@ async def cb_skip_exercise_video(call: CallbackQuery, state: FSMContext):
 @router.message(F.text == "📚 Kitob o'qishni belgilash")
 async def btn_log_reading(message: Message, state: FSMContext):
     user = await db.get_user(message.from_user.id)
-    if not user:
+    if not user or user["is_active"] == 0:
         return await message.answer("Iltimos, avval /start buyrug'i orqali ro'yxatdan o'ting.")
 
     # Already submitted reading today?
@@ -306,7 +328,7 @@ async def cb_skip_book_photo(call: CallbackQuery, state: FSMContext):
 @router.message(F.text == "📊 Bugungi natijalarim")
 async def btn_my_stats(message: Message):
     user = await db.get_user(message.from_user.id)
-    if not user:
+    if not user or user["is_active"] == 0:
         return await message.answer("Iltimos, avval /start buyrug'i orqali ro'yxatdan o'ting.")
 
     today = date.today()
@@ -332,4 +354,3 @@ async def btn_my_stats(message: Message):
         text += "📚 **Kitob o'qish:** Hali belgilanmagan"
 
     await message.answer(text)
-

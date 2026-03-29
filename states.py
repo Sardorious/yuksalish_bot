@@ -3,6 +3,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 class Registration(StatesGroup):
     waiting_for_name = State()
+    waiting_for_phone = State()
     waiting_for_class = State()
 
 
@@ -47,3 +48,7 @@ class EditBook(StatesGroup):
 
 class TeacherReport(StatesGroup):
     waiting_for_date = State()
+
+
+class ManageStudent(StatesGroup):
+    waiting_for_new_class = State()

@@ -1,4 +1,4 @@
-﻿from aiogram import Router, F
+from aiogram import Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
@@ -9,9 +9,9 @@ from keyboards import (
     admin_menu_keyboard, admin_exercise_list_keyboard, 
     admin_class_manager_keyboard, class_selection_keyboard,
     admin_book_manager_keyboard, book_selection_keyboard, book_delete_keyboard,
-    book_edit_keyboard
+    book_edit_keyboard, admin_student_manager_keyboard, student_selection_keyboard
 )
-from states import AddExercise, EditExercise, SetGroup, AddClass, AddBook, EditClass, EditBook
+from states import AddExercise, EditExercise, SetGroup, AddClass, AddBook, EditClass, EditBook, ManageStudent
 
 router = Router()
 
@@ -112,23 +112,97 @@ async def btn_list_exercises(message: Message):
     await message.answer(text)
 
 
-# ── 👥 O'quvchilar ro'yxati ────────────────────────────────────────────────────
+# ── 👥 O'quvchilarni boshqarish ──────────────────────────────────────────────────
 
-@router.message(F.text == "👥 O'quvchilar ro'yxati")
+@router.message(F.text == "👥 O'quvchilarni boshqarish")
 async def btn_students(message: Message):
     if not await check_admin(message):
         return await message.answer("❌ Bu tugma faqat admin uchun.")
+    await message.answer("👥 O'quvchilarni boshqarish menyusi:", reply_markup=admin_student_manager_keyboard())
+
+
+@router.callback_query(F.data == "list_all_students")
+async def cb_list_all_students(call: CallbackQuery):
     students = await db.get_all_students()
     if not students:
-        return await message.answer("📭 Hali hech qanday o'quvchi ro'yxatdan o'tmagan.")
+        return await call.message.edit_text("📭 Hali hech qanday o'quvchi ro'yxatdan o'tmagan.", reply_markup=admin_student_manager_keyboard())
     text = f"👥 **O'quvchilar ({len(students)} nafar):**\n"
     current_class = None
     for s in students:
         if s["class_name"] != current_class:
             current_class = s["class_name"]
             text += f"\n📌 **{current_class}**\n"
-        text += f"  • {s['name']} (`{s['telegram_id']}`)\n"
-    await message.answer(text)
+        phone_txt = s.get("phone") or "raqam yo'q"
+        text += f"  • {s['name']} (tel: {phone_txt})\n"
+    await call.message.edit_text(text, reply_markup=admin_student_manager_keyboard())
+    await call.answer()
+
+
+@router.callback_query(F.data.in_({"edit_student_class", "delete_student_from_db"}))
+async def cb_choose_action_student(call: CallbackQuery, state: FSMContext):
+    action = call.data
+    await state.update_data(student_action=action)
+    classes = await db.get_all_classes()
+    if not classes:
+         return await call.message.edit_text("📭 Hali sinflar qo'shilmagan.", reply_markup=admin_student_manager_keyboard())
+    await call.message.edit_text(
+        "🏫 O'quvchini topish uchun avval **sinfini** tanlang:",
+        reply_markup=class_selection_keyboard(classes, prefix="adm_class_sel")
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("adm_class_sel:"))
+async def cb_select_class_for_student(call: CallbackQuery, state: FSMContext):
+    class_name = call.data.split(":")[1]
+    students = await db.get_students_by_class(class_name)
+    if not students:
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        return await call.message.edit_text(
+            f"📭 {class_name} sinfida faol o'quvchilar yo'q.", 
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Qaytish", callback_data="cancel")]])
+        )
+        
+    data = await state.get_data()
+    action = data.get("student_action")
+    await call.message.edit_text(
+        f"👥 **{class_name}** sinfi o'quvchilari. Kerakli o'quvchini tanlang:",
+        reply_markup=student_selection_keyboard(students, action="adm_stu_sel")
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("adm_stu_sel:"))
+async def cb_select_student_finally(call: CallbackQuery, state: FSMContext):
+    stu_id = int(call.data.split(":")[1])
+    data = await state.get_data()
+    action = data.get("student_action")
+    
+    if action == "delete_student_from_db":
+        await db.deactivate_user(stu_id)
+        await state.clear()
+        await call.message.edit_text("✅ O'quvchi tizimdan o'chirildi (Ma'lumotlari muzlatildi).")
+    
+    elif action == "edit_student_class":
+        await state.update_data(edit_student_id=stu_id)
+        await state.set_state(ManageStudent.waiting_for_new_class)
+        classes = await db.get_all_classes()
+        await call.message.edit_text(
+            "🏫 O'quvchi uchun **yangi sinfni** tanlang:",
+            reply_markup=class_selection_keyboard(classes)
+        )
+    await call.answer()
+
+
+@router.callback_query(ManageStudent.waiting_for_new_class, F.data.startswith("select_class:"))
+async def cb_new_class_for_student(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    stu_id = data["edit_student_id"]
+    new_class = call.data.split(":")[1]
+    await db.update_user_class(stu_id, new_class)
+    await state.clear()
+    await call.message.edit_text(f"✅ O'quvchi muvaffaqiyatli **{new_class}** sinfiga o'tkazildi.")
+    await call.answer()
 
 
 # ── 🔗 Sinf guruhini ulash ─────────────────────────────────────────────────────
