@@ -64,6 +64,7 @@ def exercises_keyboard(exercises, done_ids: list[int]) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text=f"{mark} {ex['name']}", callback_data=f"toggle_ex:{ex['id']}")]
         )
     buttons.append([InlineKeyboardButton(text="✔️ Tayyor", callback_data="exercises_done")])
+    buttons.append([InlineKeyboardButton(text="🚫 Bugun mashq qilolmadim", callback_data="skip_exercises_all")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -153,6 +154,7 @@ def book_selection_keyboard(books: list[dict], last_book: str | None = None) -> 
             row.append(InlineKeyboardButton(text=books[i+1]["name"], callback_data=f"select_book:{books[i+1]['name']}"))
         buttons.append(row)
         
+    buttons.append([InlineKeyboardButton(text="🚫 Bugun o'qiyolmadim", callback_data="skip_reading_all")])
     buttons.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

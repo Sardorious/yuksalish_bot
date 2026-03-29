@@ -389,7 +389,7 @@ async def get_report_data(target_date: date) -> list[dict]:
         for student in students:
             uid = student["telegram_id"]
 
-            # Exercises done
+            # 1. Exercises done
             async with db.execute(
                 """SELECT e.name FROM submissions s
                    JOIN exercises e ON e.id = s.exercise_id
@@ -398,29 +398,48 @@ async def get_report_data(target_date: date) -> list[dict]:
             ) as cur:
                 exercises = [r["name"] for r in await cur.fetchall()]
 
-            # Exercise video
+            # 2. Check for exercise skip
+            async with db.execute(
+                "SELECT 1 FROM submissions WHERE user_id = ? AND date = ? AND type = 'exercise_skip'",
+                (uid, target_date.isoformat()),
+            ) as cur:
+                exercise_skip = await cur.fetchone() is not None
+
+            # 3. Exercise video
             async with db.execute(
                 "SELECT file_id FROM exercise_media WHERE user_id = ? AND date = ?",
                 (uid, target_date.isoformat()),
             ) as cur:
                 ex_media = await cur.fetchone()
 
-            # Reading
+            # 4. Reading
             async with db.execute(
-                "SELECT book_name, pages_read, photo_file_id FROM submissions "
-                "WHERE user_id = ? AND date = ? AND type = 'reading'",
+                "SELECT type, book_name, pages_read, photo_file_id FROM submissions "
+                "WHERE user_id = ? AND date = ? AND (type = 'reading' OR type = 'reading_skip')",
                 (uid, target_date.isoformat()),
             ) as cur:
-                reading = await cur.fetchone()
+                reading_row = await cur.fetchone()
+            
+            reading_data = None
+            if reading_row:
+                if reading_row["type"] == "reading_skip":
+                    reading_data = {"book_name": "Bajarmadi 🚫", "pages_read": 0, "photo_file_id": None}
+                else:
+                    reading_data = dict(reading_row)
+
+            # Combined result
+            res_exercises = exercises
+            if not exercises and exercise_skip:
+                res_exercises = ["Bajarmadi 🚫"]
 
             result.append(
                 {
                     "name": student["name"],
                     "class_name": student["class_name"],
                     "telegram_id": uid,
-                    "exercises": exercises,
+                    "exercises": res_exercises,
                     "exercise_video": ex_media["file_id"] if ex_media else None,
-                    "reading": dict(reading) if reading else None,
+                    "reading": reading_data,
                 }
             )
 
@@ -589,5 +608,36 @@ async def reset_reading_today(user_id: int, target_date: date | None = None):
         await db.execute(
             "DELETE FROM submissions WHERE user_id = ? AND date = ? AND type = 'reading'",
             (user_id, target_date.isoformat())
+        )
+        await db.commit()
+
+async def add_skip_submission(user_id: int, skip_type: str, target_date: date | None = None):
+    """
+    skip_type should be 'exercise_skip' or 'reading_skip'.
+    """
+    if target_date is None:
+        target_date = date.today()
+    async with aiosqlite.connect(DB_PATH) as db:
+        # For exercises: cleaning existing submissions
+        if skip_type == "exercise_skip":
+             await db.execute(
+                 "DELETE FROM submissions WHERE user_id = ? AND date = ? AND type = 'exercise'",
+                 (user_id, target_date.isoformat())
+             )
+             await db.execute(
+                 "DELETE FROM exercise_media WHERE user_id = ? AND date = ?",
+                 (user_id, target_date.isoformat())
+             )
+        # For reading: cleaning existing reading entries
+        elif skip_type == "reading_skip":
+             await db.execute(
+                 "DELETE FROM submissions WHERE user_id = ? AND date = ? AND type = 'reading'",
+                 (user_id, target_date.isoformat())
+             )
+
+        # Standard insertion for skip type
+        await db.execute(
+            "INSERT OR REPLACE INTO submissions (user_id, date, type) VALUES (?, ?, ?)",
+            (user_id, target_date.isoformat(), skip_type)
         )
         await db.commit()

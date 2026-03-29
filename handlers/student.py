@@ -339,12 +339,22 @@ async def btn_my_stats(message: Message):
     reading = await db.get_reading_today(message.from_user.id)
 
     text = f"📊 **Bugungi natijalar — {today.strftime('%d.%m.%Y')}**\n\n"
-    if done_names:
+    
+    # Check for skips
+    stats = await db.get_report_data(today)
+    my_stats = next((s for s in stats if s["telegram_id"] == message.from_user.id), None)
+
+    if my_stats and my_stats["exercises"] == ["Bajarmadi 🚫"]:
+         text += "💪 **Mashqlar:** Bajarmadi 🚫\n\n"
+    elif done_names:
         text += "💪 **Mashqlar:**\n" + "\n".join(f"  ✅ {n}" for n in done_names)
         text += f"\n  🎥 Video: {'yuklandi ✅' if video else 'yuklanmagan'}\n\n"
     else:
         text += "💪 **Mashqlar:** Hali belgilanmagan\n\n"
-    if reading:
+
+    if my_stats and my_stats["reading"] and my_stats["reading"]["book_name"] == "Bajarmadi 🚫":
+         text += "📚 **Kitob o'qish:** Bajarmadi 🚫"
+    elif reading:
         text += (
             f"📚 **Kitob o'qish:**\n"
             f"  📖 {reading['book_name']} — {reading['pages_read']} bet\n"
@@ -367,3 +377,29 @@ async def cb_del_today_reading(call: CallbackQuery):
     await db.reset_reading_today(call.from_user.id)
     await call.message.edit_text("✅ Bugungi kitob o'qish qaydi muvaffaqiyatli o'chirildi!")
     await call.answer()
+
+
+@router.callback_query(F.data == "skip_exercises_all")
+async def cb_skip_exercises_all(call: CallbackQuery, state: FSMContext):
+    await db.add_skip_submission(call.from_user.id, "exercise_skip")
+    await db.mark_exercises_submitted(call.from_user.id)
+    await call.message.edit_text("🚫 Bugun mashq bajarilmasligi belgilandi.")
+    await call.answer("Saqlandi")
+    
+    await state.set_state(ExerciseMedia.waiting_for_video)
+    await call.message.answer(
+        "📹 Mashqlaringizning **videosini** yuklashni xohlaysizmi? (ixtiyoriy)\n"
+        "Video yuboring yoki **O'tkazib yuborish** tugmasini bosing.",
+        reply_markup=skip_keyboard("skip_exercise_video"),
+    )
+
+@router.callback_query(F.data == "skip_reading_all")
+async def cb_skip_reading_all(call: CallbackQuery, state: FSMContext):
+    await db.add_skip_submission(call.from_user.id, "reading_skip")
+    await state.clear()
+    await call.message.edit_text("🚫 Bugun kitob o'qilmasligi belgilandi.")
+    await call.answer("Saqlandi")
+    
+    user = await db.get_user(call.from_user.id)
+    keyboard = await get_role_keyboard(call.from_user.id, user["role"] if user else "student")
+    await call.message.answer("Asosiy menyuga qaytdik.", reply_markup=keyboard)
