@@ -1,4 +1,4 @@
-﻿from datetime import date
+from datetime import date
 
 from aiogram import Router, F
 from aiogram.filters import CommandStart
@@ -323,10 +323,10 @@ async def cb_skip_book_photo(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-# -- 📊 Bugungi natijalarim --
+# -- Bugungi natijalar: Mashq --
 
-@router.message(F.text == "📊 Bugungi natijalarim")
-async def btn_my_stats(message: Message):
+@router.message(F.text == "💪 Mashq natijalari")
+async def btn_my_exercise_stats(message: Message):
     user = await db.get_user(message.from_user.id)
     if not user or user["is_active"] == 0:
         return await message.answer("Iltimos, avval /start buyrug'i orqali ro'yxatdan o'ting.")
@@ -336,32 +336,51 @@ async def btn_my_stats(message: Message):
     exercises = await db.get_active_exercises()
     done_names = [ex["name"] for ex in exercises if ex["id"] in done_ids]
     video = await db.get_exercise_video(message.from_user.id)
-    reading = await db.get_reading_today(message.from_user.id)
 
-    text = f"📊 **Bugungi natijalar — {today.strftime('%d.%m.%Y')}**\n\n"
+    text = f"📊 **Bugungi mashqlar — {today.strftime('%d.%m.%Y')}**\n\n"
     
     # Check for skips
     stats = await db.get_report_data(today)
     my_stats = next((s for s in stats if s["telegram_id"] == message.from_user.id), None)
 
     if my_stats and my_stats["exercises"] == ["Bajarmadi 🚫"]:
-         text += "💪 **Mashqlar:** Bajarmadi 🚫\n\n"
+         text += "💪 **Holat:** Bajarmadi 🚫"
     elif done_names:
-        text += "💪 **Mashqlar:**\n" + "\n".join(f"  ✅ {n}" for n in done_names)
-        text += f"\n  🎥 Video: {'yuklandi ✅' if video else 'yuklanmagan'}\n\n"
+        text += "💪 **Bajarilganlar:**\n" + "\n".join(f"  ✅ {n}" for n in done_names)
+        text += f"\n  🎥 Video: {'yuklandi ✅' if video else 'yuklanmagan'}"
     else:
-        text += "💪 **Mashqlar:** Hali belgilanmagan\n\n"
+        text += "💪 **Holat:** Hali belgilanmagan"
+
+    await message.answer(text)
+
+
+# -- Bugungi natijalar: Kitob --
+
+@router.message(F.text == "📚 Kitob natijalari")
+async def btn_my_reading_stats(message: Message):
+    user = await db.get_user(message.from_user.id)
+    if not user or user["is_active"] == 0:
+        return await message.answer("Iltimos, avval /start buyrug'i orqali ro'yxatdan o'ting.")
+
+    today = date.today()
+    reading = await db.get_reading_today(message.from_user.id)
+
+    text = f"📊 **Bugungi kitob o'qish — {today.strftime('%d.%m.%Y')}**\n\n"
+    
+    # Check for skips
+    stats = await db.get_report_data(today)
+    my_stats = next((s for s in stats if s["telegram_id"] == message.from_user.id), None)
 
     if my_stats and my_stats["reading"] and my_stats["reading"]["book_name"] == "Bajarmadi 🚫":
-         text += "📚 **Kitob o'qish:** Bajarmadi 🚫"
+         text += "📚 **Holat:** Bajarmadi 🚫"
     elif reading:
         text += (
-            f"📚 **Kitob o'qish:**\n"
+            f"📚 **Bajarilgan:**\n"
             f"  📖 {reading['book_name']} — {reading['pages_read']} bet\n"
             f"  📷 Rasm: {'yuklandi ✅' if reading['photo_file_id'] else 'yuklanmagan'}"
         )
     else:
-        text += "📚 **Kitob o'qish:** Hali belgilanmagan"
+        text += "📚 **Holat:** Hali belgilanmagan"
 
     await message.answer(text)
 

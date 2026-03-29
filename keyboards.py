@@ -19,7 +19,7 @@ def student_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="📋 Mashqlarni belgilash"), KeyboardButton(text="📚 Kitob o'qishni belgilash")],
-            [KeyboardButton(text="📊 Bugungi natijalarim")],
+            [KeyboardButton(text="💪 Mashq natijalari"), KeyboardButton(text="📚 Kitob natijalari")],
         ],
         resize_keyboard=True,
     )
@@ -30,8 +30,8 @@ def teacher_menu_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="💪 Mashqlar hisoboti"), KeyboardButton(text="📚 Kitoblar hisoboti")],
             [KeyboardButton(text="📅 Sana bo'yicha (Mashq)"), KeyboardButton(text="📅 Sana bo'yicha (Kitob)")],
-            [KeyboardButton(text="📚 Kitoblarni boshqarish"), KeyboardButton(text="⚠️ Belgilamaganlar")],
-            [KeyboardButton(text="📷 Bugungi media")],
+            [KeyboardButton(text="📚 Kitoblarni boshqarish")],
+            [KeyboardButton(text="⚠️ Belgilamaganlar"), KeyboardButton(text="📷 Bugungi media")],
         ],
         resize_keyboard=True,
     )
@@ -61,11 +61,20 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
 
 def exercises_keyboard(exercises, done_ids: list[int]) -> InlineKeyboardMarkup:
     buttons = []
-    for ex in exercises:
-        mark = "✅" if ex["id"] in done_ids else "◻️"
-        buttons.append(
-            [InlineKeyboardButton(text=f"{mark} {ex['name']}", callback_data=f"toggle_ex:{ex['id']}")]
-        )
+    # Two columns for exercises
+    for i in range(0, len(exercises), 2):
+        row = []
+        # First item
+        ex1 = exercises[i]
+        mark1 = "✅" if ex1["id"] in done_ids else "◻️"
+        row.append(InlineKeyboardButton(text=f"{mark1} {ex1['name']}", callback_data=f"toggle_ex:{ex1['id']}"))
+        # Second item if exists
+        if i + 1 < len(exercises):
+            ex2 = exercises[i+1]
+            mark2 = "✅" if ex2["id"] in done_ids else "◻️"
+            row.append(InlineKeyboardButton(text=f"{mark2} {ex2['name']}", callback_data=f"toggle_ex:{ex2['id']}"))
+        buttons.append(row)
+        
     buttons.append([InlineKeyboardButton(text="✔️ Tayyor", callback_data="exercises_done")])
     buttons.append([InlineKeyboardButton(text="🚫 Bugun mashq qilolmadim", callback_data="skip_exercises_all")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -79,12 +88,16 @@ def skip_keyboard(callback_data: str = "skip_media") -> InlineKeyboardMarkup:
 
 def admin_exercise_list_keyboard(exercises, action: str) -> InlineKeyboardMarkup:
     buttons = []
-    for ex in exercises:
-        if ex["active"]:
-            icon = "🗑" if action == "delete" else "✏️"
-            buttons.append(
-                [InlineKeyboardButton(text=f"{icon} {ex['name']}", callback_data=f"{action}_ex:{ex['id']}")]
-            )
+    active_ex = [ex for ex in exercises if ex["active"]]
+    icon = "🗑" if action == "delete" else "✏️"
+    
+    # Two columns
+    for i in range(0, len(active_ex), 2):
+        row = [InlineKeyboardButton(text=f"{icon} {active_ex[i]['name']}", callback_data=f"{action}_ex:{active_ex[i]['id']}")]
+        if i + 1 < len(active_ex):
+            row.append(InlineKeyboardButton(text=f"{icon} {active_ex[i+1]['name']}", callback_data=f"{action}_ex:{active_ex[i+1]['id']}"))
+        buttons.append(row)
+        
     buttons.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -137,8 +150,13 @@ def class_selection_keyboard(classes: list[str], prefix: str = "select_class") -
 
 def student_selection_keyboard(students: list[dict], action: str) -> InlineKeyboardMarkup:
     buttons = []
-    for s in students:
-        buttons.append([InlineKeyboardButton(text=f"{s['name']}", callback_data=f"{action}:{s['telegram_id']}")])
+    # Two columns
+    for i in range(0, len(students), 2):
+        row = [InlineKeyboardButton(text=f"{students[i]['name']}", callback_data=f"{action}:{students[i]['telegram_id']}")]
+        if i + 1 < len(students):
+            row.append(InlineKeyboardButton(text=f"{students[i+1]['name']}", callback_data=f"{action}:{students[i+1]['telegram_id']}"))
+        buttons.append(row)
+            
     buttons.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -164,16 +182,26 @@ def book_selection_keyboard(books: list[dict], last_book: str | None = None) -> 
 
 def book_delete_keyboard(books: list[dict]) -> InlineKeyboardMarkup:
     buttons = []
-    for b in books:
-        buttons.append([InlineKeyboardButton(text=f"🗑 {b['name']}", callback_data=f"delete_book:{b['id']}:{b['name']}")])
+    # Two columns
+    for i in range(0, len(books), 2):
+        row = [InlineKeyboardButton(text=f"🗑 {books[i]['name']}", callback_data=f"delete_book:{books[i]['id']}:{books[i]['name']}")]
+        if i + 1 < len(books):
+            row.append(InlineKeyboardButton(text=f"🗑 {books[i+1]['name']}", callback_data=f"delete_book:{books[i+1]['id']}:{books[i+1]['name']}"))
+        buttons.append(row)
+        
     buttons.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def book_edit_keyboard(books: list[dict]) -> InlineKeyboardMarkup:
     buttons = []
-    for b in books:
-        buttons.append([InlineKeyboardButton(text=f"✏️ {b['name']}", callback_data=f"edit_book:{b['id']}")])
+    # Two columns
+    for i in range(0, len(books), 2):
+        row = [InlineKeyboardButton(text=f"✏️ {books[i]['name']}", callback_data=f"edit_book:{books[i]['id']}")]
+        if i + 1 < len(books):
+            row.append(InlineKeyboardButton(text=f"✏️ {books[i+1]['name']}", callback_data=f"edit_book:{books[i+1]['id']}"))
+        buttons.append(row)
+        
     buttons.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
