@@ -60,14 +60,14 @@ async def init_db():
             )
         """)
         # Track which students have pressed 'Tayyor' (submitted) today
-        await db.execute(\"\"\"
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS exercise_submitted (
                 user_id INTEGER NOT NULL,
                 date    DATE NOT NULL,
                 PRIMARY KEY (user_id, date),
                 FOREIGN KEY (user_id) REFERENCES users(telegram_id)
             )
-        \"\"\")
+        """)
         # Predefined books for reading log
         await db.execute("""
             CREATE TABLE IF NOT EXISTS books (
@@ -529,6 +529,7 @@ async def get_last_read_book(user_id: int) -> str | None:
         ) as cur:
             row = await cur.fetchone()
             return row[0] if row else None
+
 
 
 
