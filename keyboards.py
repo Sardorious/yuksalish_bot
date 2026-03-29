@@ -28,8 +28,10 @@ def student_menu_keyboard() -> ReplyKeyboardMarkup:
 def teacher_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📊 Bugungi hisobot"), KeyboardButton(text="📅 Sana bo'yicha hisobot")],
+            [KeyboardButton(text="💪 Mashqlar hisoboti"), KeyboardButton(text="📚 Kitoblar hisoboti")],
+            [KeyboardButton(text="📅 Sana bo'yicha (Mashq)"), KeyboardButton(text="📅 Sana bo'yicha (Kitob)")],
             [KeyboardButton(text="📚 Kitoblarni boshqarish"), KeyboardButton(text="⚠️ Belgilamaganlar")],
+            [KeyboardButton(text="📷 Bugungi media")],
         ],
         resize_keyboard=True,
     )
@@ -42,8 +44,9 @@ def admin_menu_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="✏️ Mashq tahrirlash"), KeyboardButton(text="📋 Mashqlar ro'yxati")],
             [KeyboardButton(text="🏫 Sinflarni boshqarish"), KeyboardButton(text="📚 Kitoblarni boshqarish")],
             [KeyboardButton(text="🔗 Sinf guruhini ulash"), KeyboardButton(text="👥 O'quvchilarni boshqarish")],
-            [KeyboardButton(text="📊 Bugungi hisobot"), KeyboardButton(text="⚠️ Belgilamaganlar")],
-            [KeyboardButton(text="📅 Sana bo'yicha hisobot")],
+            [KeyboardButton(text="💪 Mashqlar hisoboti"), KeyboardButton(text="📚 Kitoblar hisoboti")],
+            [KeyboardButton(text="📅 Sana bo'yicha (Mashq)"), KeyboardButton(text="📅 Sana bo'yicha (Kitob)")],
+            [KeyboardButton(text="⚠️ Belgilamaganlar")],
         ],
         resize_keyboard=True,
     )
