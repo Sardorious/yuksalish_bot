@@ -1,4 +1,4 @@
-from aiogram import Router, F
+﻿from aiogram import Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
@@ -132,7 +132,7 @@ async def cb_list_all_students(call: CallbackQuery):
         if s["class_name"] != current_class:
             current_class = s["class_name"]
             text += f"\n📌 **{current_class}**\n"
-        phone_txt = s.get("phone") or "raqam yo'q"
+        phone_txt = s["phone"] or "raqam yo'q"
         text += f"  • {s['name']} (tel: {phone_txt})\n"
     await call.message.edit_text(text, reply_markup=admin_student_manager_keyboard())
     await call.answer()
@@ -344,4 +344,5 @@ async def fsm_edit_class_name(message: Message, state: FSMContext):
 async def cb_cancel(call: CallbackQuery):
     await call.message.edit_text("❌ Bekor qilindi.")
     await call.answer()
+
 
