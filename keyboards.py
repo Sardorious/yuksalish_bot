@@ -172,9 +172,12 @@ def book_edit_keyboard(books: list[dict]) -> InlineKeyboardMarkup:
     buttons.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-def edit_today_keyboard(section: str) -> InlineKeyboardMarkup:
-    """Shows 'Edit' button when student already submitted today."""
+def edit_today_keyboard(section: str, has_removable_item: bool = False) -> InlineKeyboardMarkup:
+    """Shows 'Edit' button when student already submitted today, and options to delete selectively."""
     cb = f"edit_today_{section}"
-    return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="✏️ O'zgartirish", callback_data=cb)]]
-    )
+    buttons = [[InlineKeyboardButton(text="✏️ O'zgartirish", callback_data=cb)]]
+    if section == "exercises" and has_removable_item:
+        buttons.append([InlineKeyboardButton(text="🗑 Videoni o'chirish", callback_data="del_today_video")])
+    elif section == "reading" and has_removable_item:
+        buttons.append([InlineKeyboardButton(text="🗑 Kitob qaydini o'chirish", callback_data="del_today_reading")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
