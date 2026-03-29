@@ -1,4 +1,4 @@
-from datetime import date
+﻿from datetime import date
 
 from aiogram import Router, F
 from aiogram.filters import CommandStart
@@ -134,7 +134,7 @@ async def btn_log_exercises(message: Message):
         summary += f"\n🎥 Video: {'yuklandi ✅' if video else 'yuklanmagan'}"
         return await message.answer(
             summary + "\n\n✏️ O'zgartirmoqchimisiz?",
-            reply_markup=edit_today_keyboard("exercises")
+            reply_markup=edit_today_keyboard("exercises", has_removable_item=bool(video))
         )
 
     exercises = await db.get_active_exercises()
@@ -230,7 +230,7 @@ async def btn_log_reading(message: Message, state: FSMContext):
             f"📷 Rasm: {'yuklandi ✅' if reading['photo_file_id'] else 'yuklanmagan'}\n\n"
             f"✏️ O'zgartirmoqchimisiz?"
         )
-        return await message.answer(summary, reply_markup=edit_today_keyboard("reading"))
+        return await message.answer(summary, reply_markup=edit_today_keyboard("reading", has_removable_item=True))
 
     books = await db.get_all_books()
     if not books:
@@ -354,3 +354,16 @@ async def btn_my_stats(message: Message):
         text += "📚 **Kitob o'qish:** Hali belgilanmagan"
 
     await message.answer(text)
+
+
+@router.callback_query(F.data == "del_today_video")
+async def cb_del_today_video(call: CallbackQuery):
+    await db.delete_exercise_video_today(call.from_user.id)
+    await call.message.edit_text("✅ Video muvaffaqiyatli o'chirildi! Qolgan mashqlar saqlanib qoldi.")
+    await call.answer()
+
+@router.callback_query(F.data == "del_today_reading")
+async def cb_del_today_reading(call: CallbackQuery):
+    await db.reset_reading_today(call.from_user.id)
+    await call.message.edit_text("✅ Bugungi kitob o'qish qaydi muvaffaqiyatli o'chirildi!")
+    await call.answer()

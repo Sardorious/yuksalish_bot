@@ -571,3 +571,23 @@ async def get_last_read_book(user_id: int) -> str | None:
         ) as cur:
             row = await cur.fetchone()
             return row[0] if row else None
+
+async def delete_exercise_video_today(user_id: int, target_date: date | None = None):
+    if target_date is None:
+        target_date = date.today()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM exercise_media WHERE user_id = ? AND date = ?",
+            (user_id, target_date.isoformat())
+        )
+        await db.commit()
+
+async def reset_reading_today(user_id: int, target_date: date | None = None):
+    if target_date is None:
+        target_date = date.today()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM submissions WHERE user_id = ? AND date = ? AND type = 'reading'",
+            (user_id, target_date.isoformat())
+        )
+        await db.commit()
