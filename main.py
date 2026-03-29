@@ -2,6 +2,7 @@
 import logging
 
 from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN
@@ -19,7 +20,7 @@ async def main():
     await db.init_db()
     logger.info("Database initialised ✔")
 
-    bot = Bot(token=BOT_TOKEN, parse_mode="Markdown")
+    bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="Markdown"))
     dp  = Dispatcher(storage=MemoryStorage())
 
     # Order matters: student router first so /start is caught before admin
@@ -33,4 +34,5 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
