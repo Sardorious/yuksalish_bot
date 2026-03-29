@@ -337,7 +337,8 @@ async def btn_my_exercise_stats(message: Message):
     done_names = [ex["name"] for ex in exercises if ex["id"] in done_ids]
     video = await db.get_exercise_video(message.from_user.id)
 
-    text = f"📊 **Bugungi mashqlar — {today.strftime('%d.%m.%Y')}**\n\n"
+    text = f"👤 **O'quvchi:** {user['name']}\n"
+    text += f"📊 **Bugungi mashqlar — {today.strftime('%d.%m.%Y')}**\n\n"
     
     # Check for skips
     stats = await db.get_report_data(today)
@@ -365,7 +366,8 @@ async def btn_my_reading_stats(message: Message):
     today = date.today()
     reading = await db.get_reading_today(message.from_user.id)
 
-    text = f"📊 **Bugungi kitob o'qish — {today.strftime('%d.%m.%Y')}**\n\n"
+    text = f"👤 **O'quvchi:** {user['name']}\n"
+    text += f"📊 **Bugungi kitob o'qish — {today.strftime('%d.%m.%Y')}**\n\n"
     
     # Check for skips
     stats = await db.get_report_data(today)
