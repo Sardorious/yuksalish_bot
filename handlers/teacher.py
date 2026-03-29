@@ -1,4 +1,4 @@
-import io
+﻿import io
 from datetime import date, datetime
 from itertools import groupby
 
@@ -203,7 +203,7 @@ async def btn_report_by_date(message: Message, state: FSMContext):
     await message.answer("📅 Hisobot sanasini yuboring:\nFormat: **28.03.2026**")
 
 
-@router.message(TeacherReport.waiting_for_date)
+@router.message(TeacherReport.waiting_for_date, F.text)
 async def fsm_report_date(message: Message, state: FSMContext):
     target_date = parse_date(message.text)
     if not target_date:
@@ -236,6 +236,35 @@ async def btn_missing(message: Message):
     await message.answer(text)
 
 
+
+
+
+# ── 📷 Bugungi media ─────────────────────────────────────────────────────────
+
+@router.message(F.text == "📷 Bugungi media")
+async def btn_media_today(message: Message):
+    if not await check_teacher(message):
+        return await message.answer("❌ Bu tugma faqat o'qituvchi/admin uchun.")
+    media = await db.get_today_media_list()
+    videos = media["videos"]
+    photos = media["photos"]
+    if not videos and not photos:
+        return await message.answer("📭 Bugun hali hech qanday video yoki rasm yuklanmagan.")
+    if videos:
+        await message.answer(f"🎥 **Bugungi videolar ({len(videos)} ta):**")
+        for v in videos:
+            caption = f"👤 {v['name']} | 🏫 {v['class_name']}"
+            await message.answer_video(v["video_file_id"], caption=caption)
+    if photos:
+        await message.answer(f"📷 **Bugungi kitob rasmlari ({len(photos)} ta):**")
+        for p in photos:
+            caption = (
+                f"👤 {p['name']} | 🏫 {p['class_name']}\n"
+                f"📖 {p['book_name']} — {p['pages_read']} bet"
+            )
+            await message.answer_photo(p["photo_file_id"], caption=caption)
+
+
 # ── 📚 Kitoblarni boshqarish ─────────────────────────────────────────────────
 
 @router.message(F.text == "📚 Kitoblarni boshqarish")
@@ -252,7 +281,7 @@ async def cb_add_book_start(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-@router.message(AddBook.waiting_for_name)
+@router.message(AddBook.waiting_for_name, F.text)
 async def fsm_add_book_name(message: Message, state: FSMContext):
     name = message.text.strip()
     success = await db.add_book(name)
@@ -312,7 +341,7 @@ async def cb_edit_book_select(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-@router.message(EditBook.waiting_for_new_name)
+@router.message(EditBook.waiting_for_new_name, F.text)
 async def fsm_edit_book_name(message: Message, state: FSMContext):
     data = await state.get_data()
     book_id = data["edit_book_id"]
@@ -325,3 +354,6 @@ async def fsm_edit_book_name(message: Message, state: FSMContext):
     else:
         menu = await get_menu(message)
         await message.answer(f"⚠️ **{new_name}** nomi allaqachon mavjud yoki xatolik yuz berdi.", reply_markup=menu)
+
+
+

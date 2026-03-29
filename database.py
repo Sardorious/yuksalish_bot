@@ -1,4 +1,4 @@
-import aiosqlite
+﻿import aiosqlite
 from datetime import date
 
 DB_PATH = "exercise_bot.db"
@@ -59,6 +59,15 @@ async def init_db():
                 name TEXT PRIMARY KEY
             )
         """)
+        # Track which students have pressed 'Tayyor' (submitted) today
+        await db.execute(\"\"\"
+            CREATE TABLE IF NOT EXISTS exercise_submitted (
+                user_id INTEGER NOT NULL,
+                date    DATE NOT NULL,
+                PRIMARY KEY (user_id, date),
+                FOREIGN KEY (user_id) REFERENCES users(telegram_id)
+            )
+        \"\"\")
         # Predefined books for reading log
         await db.execute("""
             CREATE TABLE IF NOT EXISTS books (
@@ -182,6 +191,42 @@ async def get_student_exercise_ids_today(user_id: int, target_date: date | None 
             return [r["exercise_id"] for r in rows]
 
 
+async def has_submitted_exercises_today(user_id: int, target_date: date | None = None) -> bool:
+    """Returns True if student already pressed 'Tayyor' (submitted) today."""
+    if target_date is None:
+        target_date = date.today()
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT 1 FROM exercise_submitted WHERE user_id = ? AND date = ?",
+            (user_id, target_date.isoformat()),
+        ) as cur:
+            return await cur.fetchone() is not None
+
+
+async def mark_exercises_submitted(user_id: int, target_date: date | None = None):
+    """Mark that student has submitted exercises for today."""
+    if target_date is None:
+        target_date = date.today()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO exercise_submitted (user_id, date) VALUES (?, ?)",
+            (user_id, target_date.isoformat()),
+        )
+        await db.commit()
+
+
+async def unmark_exercises_submitted(user_id: int, target_date: date | None = None):
+    """Allow student to re-edit exercises (remove submitted flag)."""
+    if target_date is None:
+        target_date = date.today()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM exercise_submitted WHERE user_id = ? AND date = ?",
+            (user_id, target_date.isoformat()),
+        )
+        await db.commit()
+
+
 async def toggle_exercise_submission(user_id: int, exercise_id: int, target_date: date | None = None) -> bool:
     """Returns True if added, False if removed."""
     if target_date is None:
@@ -263,6 +308,33 @@ async def get_reading_today(user_id: int, target_date: date | None = None):
 
 
 # ── Report operations ──────────────────────────────────────────────────────────
+
+async def get_today_media_list(target_date=None) -> dict:
+    """Returns all students who uploaded video or book photo today."""
+    if target_date is None:
+        target_date = date.today()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT u.name, u.class_name, em.file_id as video_file_id
+               FROM exercise_media em
+               JOIN users u ON u.telegram_id = em.user_id
+               WHERE em.date = ?
+               ORDER BY u.class_name, u.name""",
+            (target_date.isoformat(),),
+        ) as cur:
+            videos = [dict(r) for r in await cur.fetchall()]
+        async with db.execute(
+            """SELECT u.name, u.class_name, s.book_name, s.pages_read, s.photo_file_id
+               FROM submissions s
+               JOIN users u ON u.telegram_id = s.user_id
+               WHERE s.date = ? AND s.type = 'reading' AND s.photo_file_id IS NOT NULL
+               ORDER BY u.class_name, u.name""",
+            (target_date.isoformat(),),
+        ) as cur:
+            photos = [dict(r) for r in await cur.fetchall()]
+        return {"videos": videos, "photos": photos}
+
 
 async def get_report_data(target_date: date) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
@@ -457,3 +529,7 @@ async def get_last_read_book(user_id: int) -> str | None:
         ) as cur:
             row = await cur.fetchone()
             return row[0] if row else None
+
+
+
+

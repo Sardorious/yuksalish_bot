@@ -1,4 +1,4 @@
-from aiogram.types import (
+﻿from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     ReplyKeyboardMarkup,
@@ -146,3 +146,11 @@ def book_edit_keyboard(books: list[dict]) -> InlineKeyboardMarkup:
         buttons.append([InlineKeyboardButton(text=f"✏️ {b['name']}", callback_data=f"edit_book:{b['id']}")])
     buttons.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def edit_today_keyboard(section: str) -> InlineKeyboardMarkup:
+    """Shows 'Edit' button when student already submitted today."""
+    cb = f"edit_today_{section}"
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="✏️ O'zgartirish", callback_data=cb)]]
+    )
+

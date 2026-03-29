@@ -1,4 +1,4 @@
-from datetime import date
+﻿from datetime import date
 
 from aiogram import Router, F
 from aiogram.filters import CommandStart
@@ -8,15 +8,16 @@ from aiogram.fsm.context import FSMContext
 import database as db
 from config import ADMIN_IDS
 from keyboards import (
-    student_menu_keyboard, teacher_menu_keyboard, admin_menu_keyboard, 
-    exercises_keyboard, skip_keyboard, class_selection_keyboard, book_selection_keyboard
+    student_menu_keyboard, teacher_menu_keyboard, admin_menu_keyboard,
+    exercises_keyboard, skip_keyboard, class_selection_keyboard, book_selection_keyboard,
+    edit_today_keyboard,
 )
 from states import Registration, ReadingLog, ExerciseMedia
 
 router = Router()
 
 
-# ── Yordamchi: rolga mos klaviatura ───────────────────────────────────────────
+# -- Yordamchi: rolga mos klaviatura --
 
 async def get_role_keyboard(user_id: int, db_role: str):
     if user_id in ADMIN_IDS or db_role == "admin":
@@ -27,7 +28,7 @@ async def get_role_keyboard(user_id: int, db_role: str):
         return student_menu_keyboard()
 
 
-# ── /start ─────────────────────────────────────────────────────────────────────
+# -- /start --
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
@@ -54,16 +55,15 @@ async def cmd_start(message: Message, state: FSMContext):
     )
 
 
-# ── Ro'yxatdan o'tish ──────────────────────────────────────────────────────────
+# -- Ro'yxatdan o'tish --
 
-@router.message(Registration.waiting_for_name)
+@router.message(Registration.waiting_for_name, F.text)
 async def fsm_get_name(message: Message, state: FSMContext):
     classes = await db.get_all_classes()
     if not classes:
         return await message.answer(
             "⚠️ Tizimda hali sinflar mavjud emas. Iltimos, admindan sinflarni qo'shishni so'rang."
         )
-    
     await state.update_data(name=message.text.strip())
     await state.set_state(Registration.waiting_for_class)
     await message.answer(
@@ -77,30 +77,44 @@ async def fsm_get_class(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     name = data["name"]
     class_name = call.data.split(":")[1]
-    
     await db.create_user(call.from_user.id, name, class_name)
     await state.clear()
-    
     await call.message.edit_text(
         f"✅ **Muvaffaqiyatli ro'yxatdan o'tdingiz!**\n\n"
         f"👤 Ism: {name}\n"
         f"🏫 Sinf: {class_name}\n\n"
         f"Quyidagi menyu orqali kunlik mashqlaringizni belgilang."
     )
-    await call.message.answer(
-        "Asosiy menyu:",
-        reply_markup=student_menu_keyboard()
-    )
+    await call.message.answer("Asosiy menyu:", reply_markup=student_menu_keyboard())
     await call.answer()
 
 
-# ── 📋 Mashqlarni belgilash ────────────────────────────────────────────────────
+# -- 📋 Mashqlarni belgilash --
 
 @router.message(F.text == "📋 Mashqlarni belgilash")
 async def btn_log_exercises(message: Message):
     user = await db.get_user(message.from_user.id)
     if not user:
         return await message.answer("Iltimos, avval /start buyrug'i orqali ro'yxatdan o'ting.")
+
+    # Already submitted today?
+    already = await db.has_submitted_exercises_today(message.from_user.id)
+    if already:
+        done_ids = await db.get_student_exercise_ids_today(message.from_user.id)
+        exercises = await db.get_active_exercises()
+        done_names = [ex["name"] for ex in exercises if ex["id"] in done_ids]
+        video = await db.get_exercise_video(message.from_user.id)
+        summary = "✅ **Bugun mashqlaringiz yuborilgan:**\n"
+        if done_names:
+            summary += "\n".join(f"  ✅ {n}" for n in done_names)
+        else:
+            summary += "  📭 Hech qanday mashq belgilanmagan"
+        summary += f"\n🎥 Video: {'yuklandi ✅' if video else 'yuklanmagan'}"
+        return await message.answer(
+            summary + "\n\n✏️ O'zgartirmoqchimisiz?",
+            reply_markup=edit_today_keyboard("exercises")
+        )
+
     exercises = await db.get_active_exercises()
     if not exercises:
         return await message.answer("📭 Hozircha mashqlar yo'q. Admindan qo'shishni so'rang!")
@@ -110,6 +124,19 @@ async def btn_log_exercises(message: Message):
         "Belgilash ✅ / bekor qilish uchun bosing. Tugatgach **Tayyor** tugmasini bosing.",
         reply_markup=exercises_keyboard(exercises, done_ids),
     )
+
+
+@router.callback_query(F.data == "edit_today_exercises")
+async def cb_edit_today_exercises(call: CallbackQuery):
+    await db.unmark_exercises_submitted(call.from_user.id)
+    exercises = await db.get_active_exercises()
+    done_ids = await db.get_student_exercise_ids_today(call.from_user.id)
+    await call.message.edit_text(
+        "✏️ **Mashqlarni o'zgartiring:**\n"
+        "Belgilash ✅ / bekor qilish uchun bosing. Tugatgach **Tayyor** tugmasini bosing.",
+        reply_markup=exercises_keyboard(exercises, done_ids),
+    )
+    await call.answer()
 
 
 @router.callback_query(F.data.startswith("toggle_ex:"))
@@ -127,6 +154,9 @@ async def cb_exercises_done(call: CallbackQuery, state: FSMContext):
     done_ids = await db.get_student_exercise_ids_today(call.from_user.id)
     exercises = await db.get_active_exercises()
     done_names = [ex["name"] for ex in exercises if ex["id"] in done_ids]
+
+    # Mark as submitted
+    await db.mark_exercises_submitted(call.from_user.id)
 
     if done_names:
         summary = "✅ **Belgilangan mashqlar:**\n" + "\n".join(f"  • {n}" for n in done_names)
@@ -160,25 +190,50 @@ async def cb_skip_exercise_video(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-# ── 📚 Kitob o'qishni belgilash ───────────────────────────────────────────────
+# -- 📚 Kitob o'qishni belgilash --
 
 @router.message(F.text == "📚 Kitob o'qishni belgilash")
 async def btn_log_reading(message: Message, state: FSMContext):
     user = await db.get_user(message.from_user.id)
     if not user:
         return await message.answer("Iltimos, avval /start buyrug'i orqali ro'yxatdan o'ting.")
-    
+
+    # Already submitted reading today?
+    reading = await db.get_reading_today(message.from_user.id)
+    if reading:
+        summary = (
+            f"📚 **Bugun kitob o'qish belgilangan:**\n\n"
+            f"📖 Kitob: {reading['book_name']}\n"
+            f"📄 Betlar: {reading['pages_read']}\n"
+            f"📷 Rasm: {'yuklandi ✅' if reading['photo_file_id'] else 'yuklanmagan'}\n\n"
+            f"✏️ O'zgartirmoqchimisiz?"
+        )
+        return await message.answer(summary, reply_markup=edit_today_keyboard("reading"))
+
     books = await db.get_all_books()
     if not books:
         return await message.answer("📭 Hozircha kitoblar yo'q. Ustozingizdan qo'shishni so'rang!")
-    
     last_book = await db.get_last_read_book(message.from_user.id)
-    
     await state.set_state(ReadingLog.waiting_for_book)
     await message.answer(
         "📚 Qaysi kitobni o'qiyapsiz? Ro'yxatdan tanlang:",
         reply_markup=book_selection_keyboard(books, last_book)
     )
+
+
+@router.callback_query(F.data == "edit_today_reading")
+async def cb_edit_today_reading(call: CallbackQuery, state: FSMContext):
+    books = await db.get_all_books()
+    if not books:
+        await call.message.edit_text("📭 Hozircha kitoblar yo'q.")
+        return
+    last_book = await db.get_last_read_book(call.from_user.id)
+    await state.set_state(ReadingLog.waiting_for_book)
+    await call.message.edit_text(
+        "✏️ Qaysi kitobni o'qidingiz? Tanlang:",
+        reply_markup=book_selection_keyboard(books, last_book)
+    )
+    await call.answer()
 
 
 @router.callback_query(ReadingLog.waiting_for_book, F.data.startswith("select_book:"))
@@ -190,12 +245,12 @@ async def cb_select_book(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-@router.message(ReadingLog.waiting_for_book)
+@router.message(ReadingLog.waiting_for_book, F.text)
 async def fsm_reading_book_manual(message: Message):
     await message.answer("⚠️ Iltimos, kitobni ro'yxatdan tanlang. Agar kitob yo'q bo'lsa, ustozingizga murojaat qiling.")
 
 
-@router.message(ReadingLog.waiting_for_pages)
+@router.message(ReadingLog.waiting_for_pages, F.text)
 async def fsm_reading_pages(message: Message, state: FSMContext):
     try:
         pages = int(message.text.strip())
@@ -246,7 +301,7 @@ async def cb_skip_book_photo(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-# ── 📊 Bugungi natijalarim ─────────────────────────────────────────────────────
+# -- 📊 Bugungi natijalarim --
 
 @router.message(F.text == "📊 Bugungi natijalarim")
 async def btn_my_stats(message: Message):
@@ -277,3 +332,4 @@ async def btn_my_stats(message: Message):
         text += "📚 **Kitob o'qish:** Hali belgilanmagan"
 
     await message.answer(text)
+

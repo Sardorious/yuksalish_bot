@@ -1,4 +1,4 @@
-from aiogram import Router, F
+﻿from aiogram import Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
@@ -33,7 +33,7 @@ async def btn_add_exercise(message: Message, state: FSMContext):
     await message.answer("✏️ Yangi mashq nomini yuboring:")
 
 
-@router.message(AddExercise.waiting_for_name)
+@router.message(AddExercise.waiting_for_name, F.text)
 async def fsm_add_exercise_name(message: Message, state: FSMContext):
     name = message.text.strip()
     success = await db.add_exercise(name)
@@ -87,7 +87,7 @@ async def cb_edit_exercise_select(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-@router.message(EditExercise.waiting_for_new_name)
+@router.message(EditExercise.waiting_for_new_name, F.text)
 async def fsm_edit_exercise_name(message: Message, state: FSMContext):
     data = await state.get_data()
     new_name = message.text.strip()
@@ -162,7 +162,7 @@ async def cb_set_group_class(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-@router.message(SetGroup.waiting_for_chat_id)
+@router.message(SetGroup.waiting_for_chat_id, F.text)
 async def fsm_set_group_chat_id(message: Message, state: FSMContext):
     try:
         chat_id = int(message.text.strip())
@@ -195,7 +195,7 @@ async def cb_add_class_start(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-@router.message(AddClass.waiting_for_name)
+@router.message(AddClass.waiting_for_name, F.text)
 async def fsm_add_class_name(message: Message, state: FSMContext):
     name = message.text.strip()
     success = await db.add_class(name)
@@ -251,7 +251,7 @@ async def cb_edit_class_select(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-@router.message(EditClass.waiting_for_new_name)
+@router.message(EditClass.waiting_for_new_name, F.text)
 async def fsm_edit_class_name(message: Message, state: FSMContext):
     data = await state.get_data()
     old_name = data["old_class_name"]
@@ -264,96 +264,10 @@ async def fsm_edit_class_name(message: Message, state: FSMContext):
         await message.answer(f"⚠️ **{new_name}** nomi allaqachon mavjud yoki xatolik yuz berdi.", reply_markup=admin_menu_keyboard())
 
 
-# ── 📚 Kitoblarni boshqarish ─────────────────────────────────────────────────
-
-@router.message(F.text == "📚 Kitoblarni boshqarish")
-async def btn_manage_books(message: Message):
-    if not await check_admin(message):
-        return await message.answer("❌ Bu tugma faqat admin uchun.")
-    await message.answer("📚 **Kitoblarni boshqarish menyusi**", reply_markup=admin_book_manager_keyboard())
-
-
-@router.callback_query(F.data == "add_book")
-async def cb_add_book_start(call: CallbackQuery, state: FSMContext):
-    await state.set_state(AddBook.waiting_for_name)
-    await call.message.edit_text("✏️ Yangi kitob nomini yuboring:")
-    await call.answer()
-
-
-@router.message(AddBook.waiting_for_name)
-async def fsm_add_book_name(message: Message, state: FSMContext):
-    name = message.text.strip()
-    success = await db.add_book(name)
-    await state.clear()
-    if success:
-        await message.answer(f"✅ **{name}** kitobi qo'shildi!", reply_markup=admin_menu_keyboard())
-    else:
-        await message.answer(f"⚠️ **{name}** kitobi allaqachon mavjud.", reply_markup=admin_menu_keyboard())
-
-
-@router.callback_query(F.data == "list_books")
-async def cb_list_books(call: CallbackQuery):
-    books = await db.get_all_books()
-    if not books:
-        return await call.message.edit_text("📭 Kitoblar ro'yxati bo'sh.", reply_markup=admin_book_manager_keyboard())
-    text = "📋 **Mavjud kitoblar:**\n\n" + "\n".join(f"• {b['name']}" for b in books)
-    await call.message.edit_text(text, reply_markup=admin_book_manager_keyboard())
-    await call.answer()
-
-
-@router.callback_query(F.data == "list_delete_book")
-async def cb_list_delete_book(call: CallbackQuery):
-    books = await db.get_all_books()
-    if not books:
-        return await call.message.edit_text("📭 O'chirish uchun kitoblar yo'q.", reply_markup=admin_book_manager_keyboard())
-    await call.message.edit_text("O'chirish uchun kitobni tanlang:", reply_markup=book_delete_keyboard(books))
-    await call.answer()
-
-
-@router.callback_query(F.data.startswith("delete_book:"))
-async def cb_delete_book(call: CallbackQuery):
-    parts = call.data.split(":")
-    book_id = int(parts[1])
-    book_name = parts[2]
-    await db.delete_book(book_id)
-    await call.message.edit_text(f"🗑 **{book_name}** kitobi o'chirildi.")
-    await call.answer("O'chirildi!")
-
-
-@router.callback_query(F.data == "list_edit_book")
-async def cb_list_edit_book(call: CallbackQuery):
-    books = await db.get_all_books()
-    if not books:
-        return await call.message.edit_text("📭 Tahrirlash uchun kitoblar yo'q.", reply_markup=admin_book_manager_keyboard())
-    await call.message.edit_text("Tahrirlash uchun kitobni tanlang:", reply_markup=book_edit_keyboard(books))
-    await call.answer()
-
-
-@router.callback_query(F.data.startswith("edit_book:"))
-async def cb_edit_book_select(call: CallbackQuery, state: FSMContext):
-    book_id = int(call.data.split(":")[1])
-    await state.update_data(edit_book_id=book_id)
-    await state.set_state(EditBook.waiting_for_new_name)
-    await call.message.edit_text("✏️ Kitobning yangi nomini yuboring:")
-    await call.answer()
-
-
-@router.message(EditBook.waiting_for_new_name)
-async def fsm_edit_book_name(message: Message, state: FSMContext):
-    data = await state.get_data()
-    book_id = data["edit_book_id"]
-    new_name = message.text.strip()
-    success = await db.update_book(book_id, new_name)
-    await state.clear()
-    if success:
-        await message.answer(f"✅ Kitob nomi **{new_name}** ga o'zgartirildi.", reply_markup=admin_menu_keyboard())
-    else:
-        await message.answer(f"⚠️ **{new_name}** nomi allaqachon mavjud yoki xatolik yuz berdi.", reply_markup=admin_menu_keyboard())
-
-
 # ── Bekor qilish (inline) ──────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "cancel")
 async def cb_cancel(call: CallbackQuery):
     await call.message.edit_text("❌ Bekor qilindi.")
     await call.answer()
+
