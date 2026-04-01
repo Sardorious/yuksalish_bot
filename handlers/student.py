@@ -50,7 +50,7 @@ async def cmd_start(message: Message, state: FSMContext):
 
     await state.set_state(Registration.waiting_for_name)
     await message.answer(
-        "👋 **Mashq kuzatuv botiga** xush kelibsiz!\n\n"
+        "👋 **Vazifa kuzatuv botiga** xush kelibsiz!\n\n"
         "Keling, ro'yxatdan o'tamiz. Iltimos, **to'liq ismingizni** yuboring:",
         reply_markup=ReplyKeyboardRemove()
     )
@@ -105,15 +105,15 @@ async def fsm_get_class(call: CallbackQuery, state: FSMContext):
         f"👤 Ism: {name}\n"
         f"📞 Telefon: {phone}\n"
         f"🏫 Sinf: {class_name}\n\n"
-        f"Quyidagi menyu orqali joriy mashqlaringizni belgilang."
+        f"Quyidagi menyu orqali joriy vazifalaringizni belgilang."
     )
     await call.message.answer("Asosiy menyu:", reply_markup=student_menu_keyboard())
     await call.answer()
 
 
-# -- 📋 Mashqlarni belgilash --
+# -- 📋 Vazifalarni belgilash --
 
-@router.message(F.text == "📋 Mashqlarni belgilash")
+@router.message(F.text == "📋 Vazifalarni belgilash")
 async def btn_log_exercises(message: Message):
     user = await db.get_user(message.from_user.id)
     if not user or user["is_active"] == 0:
@@ -126,11 +126,12 @@ async def btn_log_exercises(message: Message):
         exercises = await db.get_active_exercises()
         done_names = [ex["name"] for ex in exercises if ex["id"] in done_ids]
         video = await db.get_exercise_video(message.from_user.id)
-        summary = "✅ **Bugun mashqlaringiz yuborilgan:**\n"
+        summary = f"👤 **O'quvchi:** {user['name']}\n"
+        summary += "✅ **Bugun vazifalaringiz yuborilgan:**\n"
         if done_names:
             summary += "\n".join(f"  ✅ {n}" for n in done_names)
         else:
-            summary += "  📭 Hech qanday mashq belgilanmagan"
+            summary += "  📭 Hech qanday vazifa belgilanmagan"
         summary += f"\n🎥 Video: {'yuklandi ✅' if video else 'yuklanmagan'}"
         return await message.answer(
             summary + "\n\n✏️ O'zgartirmoqchimisiz?",
@@ -139,10 +140,10 @@ async def btn_log_exercises(message: Message):
 
     exercises = await db.get_active_exercises()
     if not exercises:
-        return await message.answer("📭 Hozircha mashqlar yo'q. Admindan qo'shishni so'rang!")
+        return await message.answer("📭 Hozircha vazifalar yo'q. Admindan qo'shishni so'rang!")
     done_ids = await db.get_student_exercise_ids_today(message.from_user.id)
     await message.answer(
-        "📋 **Bugungi mashqlar**\n"
+        "📋 **Bugungi vazifalar**\n"
         "Belgilash ✅ / bekor qilish uchun bosing. Tugatgach **Tayyor** tugmasini bosing.",
         reply_markup=exercises_keyboard(exercises, done_ids),
     )
@@ -154,7 +155,7 @@ async def cb_edit_today_exercises(call: CallbackQuery):
     exercises = await db.get_active_exercises()
     done_ids = await db.get_student_exercise_ids_today(call.from_user.id)
     await call.message.edit_text(
-        "✏️ **Mashqlarni o'zgartiring:**\n"
+        "✏️ **Vazifalarni o'zgartiring:**\n"
         "Belgilash ✅ / bekor qilish uchun bosing. Tugatgach **Tayyor** tugmasini bosing.",
         reply_markup=exercises_keyboard(exercises, done_ids),
     )
@@ -180,17 +181,20 @@ async def cb_exercises_done(call: CallbackQuery, state: FSMContext):
     # Mark as submitted
     await db.mark_exercises_submitted(call.from_user.id)
 
+    user = await db.get_user(call.from_user.id)
+    name = user["name"] if user else "O'quvchi"
+
     if done_names:
-        summary = "✅ **Belgilangan mashqlar:**\n" + "\n".join(f"  • {n}" for n in done_names)
+        summary = f"👤 **O'quvchi:** {name}\n✅ **Belgilangan vazifalar:**\n" + "\n".join(f"  • {n}" for n in done_names)
     else:
-        summary = "📭 Hech qanday mashq tanlanmagan."
+        summary = f"👤 **O'quvchi:** {name}\n📭 Hech qanday vazifa tanlanmagan."
 
     await call.message.edit_text(summary)
     await call.answer("Saqlandi!")
 
     await state.set_state(ExerciseMedia.waiting_for_video)
     await call.message.answer(
-        "📹 Mashqlaringizning **videosini** yuklashni xohlaysizmi? (ixtiyoriy)\n"
+        "📹 Vazifalaringizning **videosini** yuklashni xohlaysizmi? (ixtiyoriy)\n"
         "Video yuboring yoki **O'tkazib yuborish** tugmasini bosing.",
         reply_markup=skip_keyboard("skip_exercise_video"),
     )
@@ -224,6 +228,7 @@ async def btn_log_reading(message: Message, state: FSMContext):
     reading = await db.get_reading_today(message.from_user.id)
     if reading:
         summary = (
+            f"👤 **O'quvchi:** {user['name']}\n"
             f"📚 **Bugun kitob o'qish belgilangan:**\n\n"
             f"📖 Kitob: {reading['book_name']}\n"
             f"📄 Betlar: {reading['pages_read']}\n"
@@ -298,8 +303,10 @@ async def fsm_reading_photo(message: Message, state: FSMContext):
     )
     await state.clear()
     user = await db.get_user(message.from_user.id)
+    name = user["name"] if user else "O'quvchi"
     keyboard = await get_role_keyboard(message.from_user.id, user["role"] if user else "student")
     await message.answer(
+        f"👤 **O'quvchi:** {name}\n"
         f"✅ **Kitob o'qish belgilandi!**\n\n"
         f"📖 Kitob: {data['book_name']}\n"
         f"📄 Betlar: {data['pages_read']}\n"
@@ -315,7 +322,10 @@ async def cb_skip_book_photo(call: CallbackQuery, state: FSMContext):
         call.from_user.id, data["book_name"], data["pages_read"], photo_file_id=None,
     )
     await state.clear()
+    user = await db.get_user(call.from_user.id)
+    name = user["name"] if user else "O'quvchi"
     await call.message.edit_text(
+        f"👤 **O'quvchi:** {name}\n"
         f"✅ **Kitob o'qish belgilandi!**\n\n"
         f"📖 Kitob: {data['book_name']}\n"
         f"📄 Betlar: {data['pages_read']}"
@@ -323,9 +333,9 @@ async def cb_skip_book_photo(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-# -- Bugungi natijalar: Mashq --
+# -- Bugungi natijalar: Vazifa --
 
-@router.message(F.text == "💪 Mashq natijalari")
+@router.message(F.text == "💪 Vazifa natijalari")
 async def btn_my_exercise_stats(message: Message):
     user = await db.get_user(message.from_user.id)
     if not user or user["is_active"] == 0:
@@ -338,7 +348,7 @@ async def btn_my_exercise_stats(message: Message):
     video = await db.get_exercise_video(message.from_user.id)
 
     text = f"👤 **O'quvchi:** {user['name']}\n"
-    text += f"📊 **Bugungi mashqlar — {today.strftime('%d.%m.%Y')}**\n\n"
+    text += f"📊 **Bugungi vazifalar — {today.strftime('%d.%m.%Y')}**\n\n"
     
     # Check for skips
     stats = await db.get_report_data(today)
@@ -390,7 +400,7 @@ async def btn_my_reading_stats(message: Message):
 @router.callback_query(F.data == "del_today_video")
 async def cb_del_today_video(call: CallbackQuery):
     await db.delete_exercise_video_today(call.from_user.id)
-    await call.message.edit_text("✅ Video muvaffaqiyatli o'chirildi! Qolgan mashqlar saqlanib qoldi.")
+    await call.message.edit_text("✅ Video muvaffaqiyatli o'chirildi! Qolgan vazifalar saqlanib qoldi.")
     await call.answer()
 
 @router.callback_query(F.data == "del_today_reading")
@@ -404,12 +414,14 @@ async def cb_del_today_reading(call: CallbackQuery):
 async def cb_skip_exercises_all(call: CallbackQuery, state: FSMContext):
     await db.add_skip_submission(call.from_user.id, "exercise_skip")
     await db.mark_exercises_submitted(call.from_user.id)
-    await call.message.edit_text("🚫 Bugun mashq bajarilmasligi belgilandi.")
+    user = await db.get_user(call.from_user.id)
+    name = user["name"] if user else "O'quvchi"
+    await call.message.edit_text(f"👤 **O'quvchi:** {name}\n🚫 Bugun vazifa bajarilmasligi belgilandi.")
     await call.answer("Saqlandi")
     
     await state.set_state(ExerciseMedia.waiting_for_video)
     await call.message.answer(
-        "📹 Mashqlaringizning **videosini** yuklashni xohlaysizmi? (ixtiyoriy)\n"
+        "📹 Vazifalaringizning **videosini** yuklashni xohlaysizmi? (ixtiyoriy)\n"
         "Video yuboring yoki **O'tkazib yuborish** tugmasini bosing.",
         reply_markup=skip_keyboard("skip_exercise_video"),
     )
@@ -418,7 +430,9 @@ async def cb_skip_exercises_all(call: CallbackQuery, state: FSMContext):
 async def cb_skip_reading_all(call: CallbackQuery, state: FSMContext):
     await db.add_skip_submission(call.from_user.id, "reading_skip")
     await state.clear()
-    await call.message.edit_text("🚫 Bugun kitob o'qilmasligi belgilandi.")
+    user = await db.get_user(call.from_user.id)
+    name = user["name"] if user else "O'quvchi"
+    await call.message.edit_text(f"👤 **O'quvchi:** {name}\n🚫 Bugun kitob o'qilmasligi belgilandi.")
     await call.answer("Saqlandi")
     
     user = await db.get_user(call.from_user.id)

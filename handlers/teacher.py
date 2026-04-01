@@ -57,7 +57,7 @@ def build_excel(target_date: date, students: list[dict], report_type: str, class
     """
     wb = openpyxl.Workbook()
     ws = wb.active
-    type_label = "Mashqlar" if report_type == "exercise" else "Kitob o'qish"
+    type_label = "Vazifalar" if report_type == "exercise" else "Kitob o'qish"
     title_suffix = f" — {class_name}" if class_name else ""
     ws.title = f"{type_label}{title_suffix}"[:31]
 
@@ -77,7 +77,7 @@ def build_excel(target_date: date, students: list[dict], report_type: str, class
     # Filter students who actually have data for this type
     if report_type == "exercise":
         filtered = [s for s in students if s["exercises"]]
-        headers = ["#", "Ism", "Sinf", "Bajarilgan mashqlar", "Video"]
+        headers = ["#", "Ism", "Sinf", "Bajarilgan vazifalar", "Video"]
         col_count = 5
     else:
         filtered = [s for s in students if s["reading"]]
@@ -152,7 +152,7 @@ async def send_report(message: Message, target_date: date, report_type: str):
     if not report_data:
         return await message.answer("📭 Hali hech qanday o'quvchi ro'yxatdan o'tmagan.")
 
-    label = "💪 Mashqlar" if report_type == "exercise" else "📚 Kitobxonlik"
+    label = "💪 Vazifalar" if report_type == "exercise" else "📚 Kitobxonlik"
     
     # 1. Generate text summary (Forward-friendly)
     text = f"{label} hisoboti — {target_date.strftime('%d.%m.%Y')}\n\n"
@@ -235,11 +235,11 @@ async def send_report(message: Message, target_date: date, report_type: str):
 
 # ── Report Handlers ────────────────────────────────────────────────────────────
 
-@router.message(F.text == "💪 Mashqlar hisoboti")
+@router.message(F.text == "💪 Vazifalar hisoboti")
 async def btn_report_exercises_today(message: Message):
     if not await check_teacher(message):
         return await message.answer("❌ Bu tugma faqat o'qituvchi/admin uchun.")
-    await message.answer("⏳ Mashqlar hisoboti tayyorlanmoqda...")
+    await message.answer("⏳ Vazifalar hisoboti tayyorlanmoqda...")
     await send_report(message, date.today(), "exercise")
 
 @router.message(F.text == "📚 Kitoblar hisoboti")
@@ -249,13 +249,13 @@ async def btn_report_reading_today(message: Message):
     await message.answer("⏳ Kitobxonlik hisoboti tayyorlanmoqda...")
     await send_report(message, date.today(), "reading")
 
-@router.message(F.text == "📅 Sana bo'yicha (Mashq)")
+@router.message(F.text == "📅 Sana bo'yicha (Vazifa)")
 async def btn_report_exercises_by_date(message: Message, state: FSMContext):
     if not await check_teacher(message):
         return await message.answer("❌ Bu tugma faqat o'qituvchi/admin uchun.")
     await state.set_state(TeacherReport.waiting_for_date)
     await state.update_data(report_type="exercise")
-    await message.answer("📅 Mashqlar hisoboti uchun sanani yuboring:\nFormat: **28.03.2026**")
+    await message.answer("📅 Vazifalar hisoboti uchun sanani yuboring:\nFormat: **28.03.2026**")
 
 @router.message(F.text == "📅 Sana bo'yicha (Kitob)")
 async def btn_report_reading_by_date(message: Message, state: FSMContext):
@@ -276,7 +276,7 @@ async def fsm_report_date(message: Message, state: FSMContext):
     report_type = data.get("report_type", "exercise") # Default to exercise
     await state.clear()
     
-    label = "mashqlar" if report_type == "exercise" else "kitobxonlik"
+    label = "vazifalar" if report_type == "exercise" else "kitobxonlik"
     await message.answer(f"⏳ {target_date.strftime('%d.%m.%Y')} uchun {label} hisoboti tayyorlanmoqda...")
     await send_report(message, target_date, report_type)
 

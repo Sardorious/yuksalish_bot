@@ -18,8 +18,8 @@ def request_phone_keyboard() -> ReplyKeyboardMarkup:
 def student_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📋 Mashqlarni belgilash"), KeyboardButton(text="📚 Kitob o'qishni belgilash")],
-            [KeyboardButton(text="💪 Mashq natijalari"), KeyboardButton(text="📚 Kitob natijalari")],
+            [KeyboardButton(text="📋 Vazifalarni belgilash"), KeyboardButton(text="📚 Kitob o'qishni belgilash")],
+            [KeyboardButton(text="💪 Vazifa natijalari"), KeyboardButton(text="📚 Kitob natijalari")],
         ],
         resize_keyboard=True,
     )
@@ -28,8 +28,8 @@ def student_menu_keyboard() -> ReplyKeyboardMarkup:
 def teacher_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="💪 Mashqlar hisoboti"), KeyboardButton(text="📚 Kitoblar hisoboti")],
-            [KeyboardButton(text="📅 Sana bo'yicha (Mashq)"), KeyboardButton(text="📅 Sana bo'yicha (Kitob)")],
+            [KeyboardButton(text="💪 Vazifalar hisoboti"), KeyboardButton(text="📚 Kitoblar hisoboti")],
+            [KeyboardButton(text="📅 Sana bo'yicha (Vazifa)"), KeyboardButton(text="📅 Sana bo'yicha (Kitob)")],
             [KeyboardButton(text="📚 Kitoblarni boshqarish")],
             [KeyboardButton(text="⚠️ Belgilamaganlar"), KeyboardButton(text="📷 Bugungi media")],
         ],
@@ -40,12 +40,12 @@ def teacher_menu_keyboard() -> ReplyKeyboardMarkup:
 def admin_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="➕ Mashq qo'shish"), KeyboardButton(text="🗑 Mashq o'chirish")],
-            [KeyboardButton(text="✏️ Mashq tahrirlash"), KeyboardButton(text="📋 Mashqlar ro'yxati")],
+            [KeyboardButton(text="➕ Vazifa qo'shish"), KeyboardButton(text="🗑 Vazifa o'chirish")],
+            [KeyboardButton(text="✏️ Vazifa tahrirlash"), KeyboardButton(text="📋 Vazifalar ro'yxati")],
             [KeyboardButton(text="🏫 Sinflarni boshqarish"), KeyboardButton(text="📚 Kitoblarni boshqarish")],
             [KeyboardButton(text="🔗 Sinf guruhini ulash"), KeyboardButton(text="👥 O'quvchilarni boshqarish")],
-            [KeyboardButton(text="💪 Mashqlar hisoboti"), KeyboardButton(text="📚 Kitoblar hisoboti")],
-            [KeyboardButton(text="📅 Sana bo'yicha (Mashq)"), KeyboardButton(text="📅 Sana bo'yicha (Kitob)")],
+            [KeyboardButton(text="💪 Vazifalar hisoboti"), KeyboardButton(text="📚 Kitoblar hisoboti")],
+            [KeyboardButton(text="📅 Sana bo'yicha (Vazifa)"), KeyboardButton(text="📅 Sana bo'yicha (Kitob)")],
             [KeyboardButton(text="⚠️ Belgilamaganlar")],
         ],
         resize_keyboard=True,
@@ -76,7 +76,7 @@ def exercises_keyboard(exercises, done_ids: list[int]) -> InlineKeyboardMarkup:
         buttons.append(row)
         
     buttons.append([InlineKeyboardButton(text="✔️ Tayyor", callback_data="exercises_done")])
-    buttons.append([InlineKeyboardButton(text="🚫 Bugun mashq qilolmadim", callback_data="skip_exercises_all")])
+    buttons.append([InlineKeyboardButton(text="🚫 Bugun vazifa bajarolmadim", callback_data="skip_exercises_all")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

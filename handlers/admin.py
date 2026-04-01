@@ -1,4 +1,4 @@
-﻿from aiogram import Router, F
+from aiogram import Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
@@ -23,14 +23,14 @@ async def check_admin(message: Message) -> bool:
     return message.from_user.id in ADMIN_IDS or (user is not None and user["role"] == "admin")
 
 
-# ── ➕ Mashq qo'shish ──────────────────────────────────────────────────────────
+# ── ➕ Vazifa qo'shish ──────────────────────────────────────────────────────────
 
-@router.message(F.text == "➕ Mashq qo'shish")
+@router.message(F.text == "➕ Vazifa qo'shish")
 async def btn_add_exercise(message: Message, state: FSMContext):
     if not await check_admin(message):
         return await message.answer("❌ Bu tugma faqat admin uchun.")
     await state.set_state(AddExercise.waiting_for_name)
-    await message.answer("✏️ Yangi mashq nomini yuboring:")
+    await message.answer("✏️ Yangi vazifa nomini yuboring:")
 
 
 @router.message(AddExercise.waiting_for_name, F.text)
@@ -39,43 +39,43 @@ async def fsm_add_exercise_name(message: Message, state: FSMContext):
     success = await db.add_exercise(name)
     await state.clear()
     if success:
-        await message.answer(f"✅ **{name}** mashqi qo'shildi!", reply_markup=admin_menu_keyboard())
+        await message.answer(f"✅ **{name}** vazifasi qo'shildi!", reply_markup=admin_menu_keyboard())
     else:
-        await message.answer(f"⚠️ **{name}** mashqi allaqachon mavjud.", reply_markup=admin_menu_keyboard())
+        await message.answer(f"⚠️ **{name}** vazifasi allaqachon mavjud.", reply_markup=admin_menu_keyboard())
 
 
-# ── 🗑 Mashq o'chirish ─────────────────────────────────────────────────────────
+# ── 🗑 Vazifa o'chirish ─────────────────────────────────────────────────────────
 
-@router.message(F.text == "🗑 Mashq o'chirish")
+@router.message(F.text == "🗑 Vazifa o'chirish")
 async def btn_delete_exercise(message: Message):
     if not await check_admin(message):
         return await message.answer("❌ Bu tugma faqat admin uchun.")
     exercises = await db.get_all_exercises()
     active = [ex for ex in exercises if ex["active"]]
     if not active:
-        return await message.answer("📭 O'chirish uchun faol mashqlar yo'q.")
-    await message.answer("O'chirish uchun mashqni tanlang:", reply_markup=admin_exercise_list_keyboard(active, "delete"))
+        return await message.answer("📭 O'chirish uchun faol vazifalar yo'q.")
+    await message.answer("O'chirish uchun vazifani tanlang:", reply_markup=admin_exercise_list_keyboard(active, "delete"))
 
 
 @router.callback_query(F.data.startswith("delete_ex:"))
 async def cb_delete_exercise(call: CallbackQuery):
     ex_id = int(call.data.split(":")[1])
     await db.delete_exercise(ex_id)
-    await call.message.edit_text("🗑 Mashq o'chirildi.")
+    await call.message.edit_text("🗑 Vazifa o'chirildi.")
     await call.answer("O'chirildi!")
 
 
-# ── ✏️ Mashq tahrirlash ────────────────────────────────────────────────────────
+# ── ✏️ Vazifa tahrirlash ────────────────────────────────────────────────────────
 
-@router.message(F.text == "✏️ Mashq tahrirlash")
+@router.message(F.text == "✏️ Vazifa tahrirlash")
 async def btn_edit_exercise(message: Message):
     if not await check_admin(message):
         return await message.answer("❌ Bu tugma faqat admin uchun.")
     exercises = await db.get_all_exercises()
     active = [ex for ex in exercises if ex["active"]]
     if not active:
-        return await message.answer("📭 Tahrirlash uchun faol mashqlar yo'q.")
-    await message.answer("Tahrirlash uchun mashqni tanlang:", reply_markup=admin_exercise_list_keyboard(active, "edit"))
+        return await message.answer("📭 Tahrirlash uchun faol vazifalar yo'q.")
+    await message.answer("Tahrirlash uchun vazifani tanlang:", reply_markup=admin_exercise_list_keyboard(active, "edit"))
 
 
 @router.callback_query(F.data.startswith("edit_ex:"))
@@ -83,7 +83,7 @@ async def cb_edit_exercise_select(call: CallbackQuery, state: FSMContext):
     ex_id = int(call.data.split(":")[1])
     await state.set_state(EditExercise.waiting_for_new_name)
     await state.update_data(edit_ex_id=ex_id)
-    await call.message.edit_text("✏️ Mashqning yangi nomini yuboring:")
+    await call.message.edit_text("✏️ Vazifaning yangi nomini yuboring:")
     await call.answer()
 
 
@@ -94,21 +94,21 @@ async def fsm_edit_exercise_name(message: Message, state: FSMContext):
     success = await db.update_exercise(data["edit_ex_id"], new_name)
     await state.clear()
     if success:
-        await message.answer(f"✅ Mashq nomi **{new_name}** ga o'zgartirildi.", reply_markup=admin_menu_keyboard())
+        await message.answer(f"✅ Vazifa nomi **{new_name}** ga o'zgartirildi.", reply_markup=admin_menu_keyboard())
     else:
         await message.answer(f"⚠️ **{new_name}** nomi allaqachon mavjud.", reply_markup=admin_menu_keyboard())
 
 
-# ── 📋 Mashqlar ro'yxati ───────────────────────────────────────────────────────
+# ── 📋 Vazifalar ro'yxati ───────────────────────────────────────────────────────
 
-@router.message(F.text == "📋 Mashqlar ro'yxati")
+@router.message(F.text == "📋 Vazifalar ro'yxati")
 async def btn_list_exercises(message: Message):
     if not await check_admin(message):
         return await message.answer("❌ Bu tugma faqat admin uchun.")
     exercises = await db.get_active_exercises()
     if not exercises:
-        return await message.answer("📭 Faol mashqlar topilmadi.")
-    text = "📋 **Faol mashqlar:**\n\n" + "\n".join(f"• {ex['name']}" for ex in exercises)
+        return await message.answer("📭 Faol vazifalar topilmadi.")
+    text = "📋 **Faol vazifalar:**\n\n" + "\n".join(f"• {ex['name']}" for ex in exercises)
     await message.answer(text)
 
 
