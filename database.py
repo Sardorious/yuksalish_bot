@@ -561,6 +561,14 @@ async def get_all_books() -> list[dict]:
             return [dict(r) for r in rows]
 
 
+async def get_book_by_id(book_id: int) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT id, name FROM books WHERE id = ?", (book_id,)) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
 async def delete_book(book_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM books WHERE id = ?", (book_id,))
@@ -582,14 +590,17 @@ async def update_book(book_id: int, new_name: str) -> bool:
             return False
 
 
-async def get_last_read_book(user_id: int) -> str | None:
+async def get_last_read_book(user_id: int) -> dict | None:
     async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT book_name FROM submissions WHERE user_id = ? AND type = 'reading' ORDER BY date DESC LIMIT 1",
+            "SELECT b.id, b.name FROM submissions s "
+            "JOIN books b ON b.name = s.book_name "
+            "WHERE s.user_id = ? AND s.type = 'reading' ORDER BY s.date DESC LIMIT 1",
             (user_id,)
         ) as cur:
             row = await cur.fetchone()
-            return row[0] if row else None
+            return dict(row) if row else None
 
 async def delete_exercise_video_today(user_id: int, target_date: date | None = None):
     if target_date is None:

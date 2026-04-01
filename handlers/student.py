@@ -1,7 +1,7 @@
 from datetime import date
 
 from aiogram import Router, F
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, StateFilter
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
 from aiogram.fsm.context import FSMContext
 
@@ -149,8 +149,9 @@ async def btn_log_exercises(message: Message):
     )
 
 
-@router.callback_query(F.data == "edit_today_exercises")
-async def cb_edit_today_exercises(call: CallbackQuery):
+@router.callback_query(F.data == "edit_today_exercises", StateFilter("*"))
+async def cb_edit_today_exercises(call: CallbackQuery, state: FSMContext):
+    await state.clear()
     await db.unmark_exercises_submitted(call.from_user.id)
     exercises = await db.get_active_exercises()
     done_ids = await db.get_student_exercise_ids_today(call.from_user.id)
@@ -248,8 +249,9 @@ async def btn_log_reading(message: Message, state: FSMContext):
     )
 
 
-@router.callback_query(F.data == "edit_today_reading")
+@router.callback_query(F.data == "edit_today_reading", StateFilter("*"))
 async def cb_edit_today_reading(call: CallbackQuery, state: FSMContext):
+    await state.clear()
     books = await db.get_all_books()
     if not books:
         await call.message.edit_text("📭 Hozircha kitoblar yo'q.")
@@ -263,9 +265,11 @@ async def cb_edit_today_reading(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-@router.callback_query(ReadingLog.waiting_for_book, F.data.startswith("select_book:"))
+@router.callback_query(ReadingLog.waiting_for_book, F.data.startswith("sel_bk:"))
 async def cb_select_book(call: CallbackQuery, state: FSMContext):
-    book_name = call.data.split(":")[1]
+    book_id = int(call.data.split(":")[1])
+    book = await db.get_book_by_id(book_id)
+    book_name = book["name"] if book else "Noma'lum kitob"
     await state.update_data(book_name=book_name)
     await state.set_state(ReadingLog.waiting_for_pages)
     await call.message.edit_text(f"📖 Tanlangan kitob: **{book_name}**\n\n📄 Bugun nechta **bet** o'qidingiz? Raqam yuboring:")
@@ -397,20 +401,22 @@ async def btn_my_reading_stats(message: Message):
     await message.answer(text)
 
 
-@router.callback_query(F.data == "del_today_video")
-async def cb_del_today_video(call: CallbackQuery):
+@router.callback_query(F.data == "del_today_video", StateFilter("*"))
+async def cb_del_today_video(call: CallbackQuery, state: FSMContext):
+    await state.clear()
     await db.delete_exercise_video_today(call.from_user.id)
     await call.message.edit_text("✅ Video muvaffaqiyatli o'chirildi! Qolgan vazifalar saqlanib qoldi.")
     await call.answer()
 
-@router.callback_query(F.data == "del_today_reading")
-async def cb_del_today_reading(call: CallbackQuery):
+@router.callback_query(F.data == "del_today_reading", StateFilter("*"))
+async def cb_del_today_reading(call: CallbackQuery, state: FSMContext):
+    await state.clear()
     await db.reset_reading_today(call.from_user.id)
     await call.message.edit_text("✅ Bugungi kitob o'qish qaydi muvaffaqiyatli o'chirildi!")
     await call.answer()
 
 
-@router.callback_query(F.data == "skip_exercises_all")
+@router.callback_query(F.data == "skip_exercises_all", StateFilter("*"))
 async def cb_skip_exercises_all(call: CallbackQuery, state: FSMContext):
     await db.add_skip_submission(call.from_user.id, "exercise_skip")
     await db.mark_exercises_submitted(call.from_user.id)
@@ -426,7 +432,7 @@ async def cb_skip_exercises_all(call: CallbackQuery, state: FSMContext):
         reply_markup=skip_keyboard("skip_exercise_video"),
     )
 
-@router.callback_query(F.data == "skip_reading_all")
+@router.callback_query(F.data == "skip_reading_all", StateFilter("*"))
 async def cb_skip_reading_all(call: CallbackQuery, state: FSMContext):
     await db.add_skip_submission(call.from_user.id, "reading_skip")
     await state.clear()

@@ -161,18 +161,18 @@ def student_selection_keyboard(students: list[dict], action: str) -> InlineKeybo
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def book_selection_keyboard(books: list[dict], last_book: str | None = None) -> InlineKeyboardMarkup:
+def book_selection_keyboard(books: list[dict], last_book: dict | None = None) -> InlineKeyboardMarkup:
     buttons = []
     
     # Priority: last read book
     if last_book:
-        buttons.append([InlineKeyboardButton(text=f"📖 Oxirgi: {last_book}", callback_data=f"select_book:{last_book}")])
+        buttons.append([InlineKeyboardButton(text=f"📖 Oxirgi: {last_book['name']}", callback_data=f"sel_bk:{last_book['id']}")])
     
     # Two columns for other books
     for i in range(0, len(books), 2):
-        row = [InlineKeyboardButton(text=books[i]["name"], callback_data=f"select_book:{books[i]['name']}")]
+        row = [InlineKeyboardButton(text=books[i]["name"], callback_data=f"sel_bk:{books[i]['id']}")]
         if i + 1 < len(books):
-            row.append(InlineKeyboardButton(text=books[i+1]["name"], callback_data=f"select_book:{books[i+1]['name']}"))
+            row.append(InlineKeyboardButton(text=books[i+1]["name"], callback_data=f"sel_bk:{books[i+1]['id']}"))
         buttons.append(row)
         
     buttons.append([InlineKeyboardButton(text="🚫 Bugun o'qiyolmadim", callback_data="skip_reading_all")])
