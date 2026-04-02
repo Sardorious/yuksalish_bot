@@ -10,7 +10,7 @@ from config import ADMIN_IDS
 from keyboards import (
     student_menu_keyboard, teacher_menu_keyboard, admin_menu_keyboard,
     exercises_keyboard, skip_keyboard, class_selection_keyboard, book_selection_keyboard,
-    edit_today_keyboard, request_phone_keyboard
+    edit_today_keyboard, request_phone_keyboard, reminder_manage_keyboard
 )
 from states import Registration, ReadingLog, ExerciseMedia, Reminder
 
@@ -109,6 +109,17 @@ async def fsm_get_class(call: CallbackQuery, state: FSMContext):
     )
     await call.message.answer("Asosiy menyu:", reply_markup=student_menu_keyboard())
     await call.answer()
+
+
+@router.callback_query(F.data == "cancel", StateFilter("*"))
+async def cb_cancel(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    user = await db.get_user(call.from_user.id)
+    keyboard = await get_role_keyboard(call.from_user.id, user["role"] if user else "student")
+    await call.message.edit_text("❌ Bekor qilindi.")
+    await call.message.answer("Asosiy menyu:", reply_markup=keyboard)
+    await call.answer()
+
 
 
 # -- 📋 Vazifalarni belgilash --
@@ -298,15 +309,28 @@ async def fsm_reading_pages(message: Message, state: FSMContext):
     )
 
 
-@router.message(F.text == "/reminder")
+@router.message(F.text.in_(["/reminder", "🔔 Eslatma sozlash"]))
 async def cmd_reminder(message: Message, state: FSMContext):
-    # Disable reminder
-    if message.get_args().strip().lower() == "off":
-        await db.disable_reminder(message.from_user.id)
-        await message.answer("✅ Eslatma o'chirildi.")
-        return
+    # If it's a command with "off"
+    if message.text.startswith("/reminder") and len(message.text.split()) > 1:
+        if message.text.split()[1].lower() == "off":
+            await db.disable_reminder(message.from_user.id)
+            await message.answer("✅ Eslatma o'chirildi.")
+            return
+
+    reminder = await db.get_reminder(message.from_user.id)
+    text = "🔔 **Eslatma boshqarish**\n\n"
+    if reminder and reminder["enabled"]:
+        text += f"⏰ Hozirgi eslatma vaqti: **{reminder['time']}**\n\n"
+        text += "Eslatmani o'chirish uchun `/reminder off` deb yozing yoki yangi vaqt yuboring.\n"
+    else:
+        text += "📭 Hozirda eslatma sozlanmagan.\n\n"
+    
     await state.set_state(Reminder.waiting_for_time)
-    await message.answer("⏰ Iltimos, eslatma vaqtini HH:MM formatida kiriting (24‑soat).")
+    await message.answer(
+        text + "⏰ Yangi eslatma vaqtini kiriting (masalan, `08:00`):",
+        reply_markup=reminder_manage_keyboard(bool(reminder and reminder["enabled"]))
+    )
 
 @router.message(Reminder.waiting_for_time, F.text)
 async def set_reminder_time(message: Message, state: FSMContext):
@@ -322,6 +346,13 @@ async def set_reminder_time(message: Message, state: FSMContext):
     await message.answer(f"✅ Eslatma {time_str} da har kuni yuboriladi.")
 
 # Callbacks from reminder notifications
+@router.callback_query(F.data == "reminder_disable", StateFilter("*"))
+async def cb_reminder_disable(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await db.disable_reminder(call.from_user.id)
+    await call.message.edit_text("✅ Eslatma o'chirildi.")
+    await call.answer()
+
 @router.callback_query(F.data == "reminder_exercises")
 async def cb_reminder_exercises(call: CallbackQuery):
     await call.message.delete()

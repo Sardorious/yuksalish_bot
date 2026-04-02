@@ -218,6 +218,13 @@ def edit_today_keyboard(section: str, has_removable_item: bool = False) -> Inlin
         buttons.append([InlineKeyboardButton(text="🗑 Kitob qaydini o'chirish", callback_data="del_today_reading")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
+def reminder_manage_keyboard(enabled: bool) -> InlineKeyboardMarkup:
+    buttons = []
+    if enabled:
+        buttons.append([InlineKeyboardButton(text="📴 Eslatmani o'chirish", callback_data="reminder_disable")])
+    buttons.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
 # New keyboard for reminder notifications
 def reminder_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
