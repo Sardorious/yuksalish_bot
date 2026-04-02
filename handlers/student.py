@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from aiogram import Router, F
 from aiogram.filters import CommandStart, StateFilter
@@ -12,7 +12,7 @@ from keyboards import (
     exercises_keyboard, skip_keyboard, class_selection_keyboard, book_selection_keyboard,
     edit_today_keyboard, request_phone_keyboard
 )
-from states import Registration, ReadingLog, ExerciseMedia
+from states import Registration, ReadingLog, ExerciseMedia, Reminder
 
 router = Router()
 
@@ -298,7 +298,42 @@ async def fsm_reading_pages(message: Message, state: FSMContext):
     )
 
 
-@router.message(ReadingLog.waiting_for_photo, F.photo)
+@router.message(F.text == "/reminder")
+async def cmd_reminder(message: Message, state: FSMContext):
+    # Disable reminder
+    if message.get_args().strip().lower() == "off":
+        await db.disable_reminder(message.from_user.id)
+        await message.answer("✅ Eslatma o'chirildi.")
+        return
+    await state.set_state(Reminder.waiting_for_time)
+    await message.answer("⏰ Iltimos, eslatma vaqtini HH:MM formatida kiriting (24‑soat).")
+
+@router.message(Reminder.waiting_for_time, F.text)
+async def set_reminder_time(message: Message, state: FSMContext):
+    time_str = message.text.strip()
+    # Simple validation
+    try:
+        datetime.strptime(time_str, "%H:%M")
+    except Exception:
+        await message.answer("⚠️ Noto'g'ri format. Iltimos, HH:MM formatida vaqt kiriting.")
+        return
+    await db.set_reminder(message.from_user.id, time_str)
+    await state.clear()
+    await message.answer(f"✅ Eslatma {time_str} da har kuni yuboriladi.")
+
+# Callbacks from reminder notifications
+@router.callback_query(F.data == "reminder_exercises")
+async def cb_reminder_exercises(call: CallbackQuery):
+    await call.message.delete()
+    await btn_log_exercises(call.message)
+    await call.answer()
+
+@router.callback_query(F.data == "reminder_reading")
+async def cb_reminder_reading(call: CallbackQuery):
+    await call.message.delete()
+    await btn_log_reading(call.message)
+    await call.answer()
+
 async def fsm_reading_photo(message: Message, state: FSMContext):
     data = await state.get_data()
     await db.add_reading_submission(
@@ -311,7 +346,8 @@ async def fsm_reading_photo(message: Message, state: FSMContext):
     keyboard = await get_role_keyboard(message.from_user.id, user["role"] if user else "student")
     await message.answer(
         f"👤 **O'quvchi:** {name}\n"
-        f"✅ **Kitob o'qish belgilandi!**\n\n"
+        f"✅ **Kitob o'qish belgilandi!**\n"
+        f"📅 **Sana:** {date.today().strftime('%d.%m.%Y')}\n"
         f"📖 Kitob: {data['book_name']}\n"
         f"📄 Betlar: {data['pages_read']}\n"
         f"📷 Rasm: yuklandi ✅",
@@ -330,7 +366,8 @@ async def cb_skip_book_photo(call: CallbackQuery, state: FSMContext):
     name = user["name"] if user else "O'quvchi"
     await call.message.edit_text(
         f"👤 **O'quvchi:** {name}\n"
-        f"✅ **Kitob o'qish belgilandi!**\n\n"
+        f"✅ **Kitob o'qish belgilandi!**\n"
+        f"📅 **Sana:** {date.today().strftime('%d.%m.%Y')}\n"
         f"📖 Kitob: {data['book_name']}\n"
         f"📄 Betlar: {data['pages_read']}"
     )

@@ -20,6 +20,7 @@ def student_menu_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="📋 Vazifalarni belgilash"), KeyboardButton(text="📚 Kitob o'qishni belgilash")],
             [KeyboardButton(text="💪 Vazifa natijalari"), KeyboardButton(text="📚 Kitob natijalari")],
+            [KeyboardButton(text="🔔 Eslatma sozlash")],
         ],
         resize_keyboard=True,
     )
@@ -32,6 +33,7 @@ def teacher_menu_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="📅 Sana bo'yicha (Vazifa)"), KeyboardButton(text="📅 Sana bo'yicha (Kitob)")],
             [KeyboardButton(text="📚 Kitoblarni boshqarish")],
             [KeyboardButton(text="⚠️ Belgilamaganlar"), KeyboardButton(text="📷 Bugungi media")],
+            [KeyboardButton(text="🔔 Eslatma sozlash")],
         ],
         resize_keyboard=True,
     )
@@ -47,6 +49,7 @@ def admin_menu_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="💪 Vazifalar hisoboti"), KeyboardButton(text="📚 Kitoblar hisoboti")],
             [KeyboardButton(text="📅 Sana bo'yicha (Vazifa)"), KeyboardButton(text="📅 Sana bo'yicha (Kitob)")],
             [KeyboardButton(text="⚠️ Belgilamaganlar")],
+            [KeyboardButton(text="🔔 Eslatma sozlash")],
         ],
         resize_keyboard=True,
     )
@@ -214,3 +217,10 @@ def edit_today_keyboard(section: str, has_removable_item: bool = False) -> Inlin
     elif section == "reading" and has_removable_item:
         buttons.append([InlineKeyboardButton(text="🗑 Kitob qaydini o'chirish", callback_data="del_today_reading")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+# New keyboard for reminder notifications
+def reminder_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📋 Vazifalarni belgilash", callback_data="reminder_exercises")],
+        [InlineKeyboardButton(text="📚 Kitob o'qishni belgilash", callback_data="reminder_reading")],
+    ])

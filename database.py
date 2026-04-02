@@ -66,6 +66,14 @@ async def init_db():
                 chat_id    INTEGER NOT NULL
             )
         """)
+        # Reminders table for daily notifications
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS reminders (
+                user_id INTEGER PRIMARY KEY,
+                time    TEXT NOT NULL,  -- HH:MM format
+                enabled BOOLEAN NOT NULL DEFAULT 1
+            )
+        """)
         # Predefined classes for registration
         await db.execute("""
             CREATE TABLE IF NOT EXISTS classes (
@@ -520,6 +528,41 @@ async def get_all_classes() -> list[str]:
         async with db.execute("SELECT name FROM classes ORDER BY name") as cur:
             rows = await cur.fetchall()
             return [r[0] for r in rows]
+
+# Reminder management
+async def set_reminder(user_id: int, time_str: str) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO reminders (user_id, time, enabled) VALUES (?, ?, 1)",
+            (user_id, time_str),
+        )
+        await db.commit()
+
+async def get_reminder(user_id: int) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT time, enabled FROM reminders WHERE user_id = ?", (user_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            if row:
+                return {"time": row["time"], "enabled": bool(row["enabled"])}
+            return None
+
+async def disable_reminder(user_id: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE reminders SET enabled = 0 WHERE user_id = ?", (user_id,)
+        )
+        await db.commit()
+
+async def get_due_reminders(current_time: str) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT user_id FROM reminders WHERE time = ? AND enabled = 1", (current_time,)
+        ) as cur:
+            rows = await cur.fetchall()
+            return [{"user_id": r["user_id"]} for r in rows]
+
 
 
 async def delete_class(name: str):

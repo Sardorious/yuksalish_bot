@@ -52,3 +52,8 @@ class TeacherReport(StatesGroup):
 
 class ManageStudent(StatesGroup):
     waiting_for_new_class = State()
+
+
+# New state for reminder setting
+class Reminder(StatesGroup):
+    waiting_for_time = State()
