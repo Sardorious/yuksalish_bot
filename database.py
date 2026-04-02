@@ -540,6 +540,7 @@ async def set_reminder(user_id: int, time_str: str) -> None:
 
 async def get_reminder(user_id: int) -> dict | None:
     async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT time, enabled FROM reminders WHERE user_id = ?", (user_id,)
         ) as cur:
@@ -557,6 +558,7 @@ async def disable_reminder(user_id: int) -> None:
 
 async def get_due_reminders(current_time: str) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT user_id FROM reminders WHERE time = ? AND enabled = 1", (current_time,)
         ) as cur:
