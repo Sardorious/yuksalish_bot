@@ -4,7 +4,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
 import database as db
-from config import ADMIN_IDS
+from config import ADMIN_IDS, SUPERUSER_IDS
 from keyboards import (
     admin_menu_keyboard, admin_exercise_list_keyboard, 
     admin_class_manager_keyboard, class_selection_keyboard,
@@ -20,7 +20,7 @@ router = Router()
 
 async def check_admin(message: Message) -> bool:
     user = await db.get_user(message.from_user.id)
-    return message.from_user.id in ADMIN_IDS or (user is not None and user["role"] == "admin")
+    return message.from_user.id in ADMIN_IDS or message.from_user.id in SUPERUSER_IDS or (user is not None and user["role"] == "admin")
 
 
 # ── ➕ Vazifa qo'shish ──────────────────────────────────────────────────────────

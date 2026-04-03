@@ -6,9 +6,9 @@ from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
 from aiogram.fsm.context import FSMContext
 
 import database as db
-from config import ADMIN_IDS
+from config import ADMIN_IDS, SUPERUSER_IDS
 from keyboards import (
-    student_menu_keyboard, teacher_menu_keyboard, admin_menu_keyboard,
+    student_menu_keyboard, teacher_menu_keyboard, admin_menu_keyboard, superuser_menu_keyboard,
     exercises_keyboard, skip_keyboard, class_selection_keyboard, book_selection_keyboard,
     edit_today_keyboard, request_phone_keyboard, reminder_manage_keyboard
 )
@@ -20,6 +20,8 @@ router = Router()
 # -- Yordamchi: rolga mos klaviatura --
 
 async def get_role_keyboard(user_id: int, db_role: str):
+    if user_id in SUPERUSER_IDS:
+        return superuser_menu_keyboard()
     if user_id in ADMIN_IDS or db_role == "admin":
         return admin_menu_keyboard()
     elif db_role == "teacher":
@@ -36,7 +38,7 @@ async def cmd_start(message: Message, state: FSMContext):
     user = await db.get_user(message.from_user.id)
     if user and user["is_active"] == 1:
         keyboard = await get_role_keyboard(message.from_user.id, user["role"])
-        role_text = {
+        role_text = "Superuser (Hamma huquqlar)" if message.from_user.id in SUPERUSER_IDS else {
             "admin": "Admin",
             "teacher": "O'qituvchi",
             "student": "O'quvchi",

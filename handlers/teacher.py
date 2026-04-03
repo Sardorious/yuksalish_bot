@@ -12,7 +12,7 @@ from aiogram.types import Message, BufferedInputFile, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
 import database as db
-from config import ADMIN_IDS
+from config import ADMIN_IDS, SUPERUSER_IDS
 from keyboards import (
     teacher_menu_keyboard, admin_menu_keyboard,
     admin_book_manager_keyboard, book_selection_keyboard, book_delete_keyboard,
@@ -27,13 +27,16 @@ router = Router()
 
 async def check_teacher(message: Message) -> bool:
     user = await db.get_user(message.from_user.id)
-    return message.from_user.id in ADMIN_IDS or (
+    return message.from_user.id in ADMIN_IDS or message.from_user.id in SUPERUSER_IDS or (
         user is not None and user["role"] in ("teacher", "admin")
     )
 
 
 async def get_menu(message: Message):
+    from keyboards import superuser_menu_keyboard
     user = await db.get_user(message.from_user.id)
+    if message.from_user.id in SUPERUSER_IDS:
+        return superuser_menu_keyboard()
     if message.from_user.id in ADMIN_IDS or (user and user["role"] == "admin"):
         return admin_menu_keyboard()
     return teacher_menu_keyboard()

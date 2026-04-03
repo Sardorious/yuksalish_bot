@@ -59,6 +59,23 @@ def admin_menu_keyboard() -> ReplyKeyboardMarkup:
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
     return student_menu_keyboard()
 
+def superuser_menu_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📋 Vazifalarni belgilash"), KeyboardButton(text="📚 Kitob o'qishni belgilash")],
+            [KeyboardButton(text="💪 Vazifa natijalari"), KeyboardButton(text="📚 Kitob natijalari")],
+            [KeyboardButton(text="💪 Vazifalar hisoboti"), KeyboardButton(text="📚 Kitoblar hisoboti")],
+            [KeyboardButton(text="📅 Sana bo'yicha (Vazifa)"), KeyboardButton(text="📅 Sana bo'yicha (Kitob)")],
+            [KeyboardButton(text="⚠️ Belgilamaganlar"), KeyboardButton(text="📷 Bugungi media")],
+            [KeyboardButton(text="➕ Vazifa qo'shish"), KeyboardButton(text="🗑 Vazifa o'chirish")],
+            [KeyboardButton(text="✏️ Vazifa tahrirlash"), KeyboardButton(text="📋 Vazifalar ro'yxati")],
+            [KeyboardButton(text="🏫 Sinflarni boshqarish"), KeyboardButton(text="📚 Kitoblarni boshqarish")],
+            [KeyboardButton(text="🔗 Sinf guruhini ulash"), KeyboardButton(text="👥 O'quvchilarni boshqarish")],
+            [KeyboardButton(text="🔔 Eslatma sozlash")],
+        ],
+        resize_keyboard=True,
+    )
+
 
 # ── Inline keyboards ───────────────────────────────────────────────────────────
 
