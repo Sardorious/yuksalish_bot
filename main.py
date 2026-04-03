@@ -24,25 +24,29 @@ logger = logging.getLogger(__name__)
 
 async def reminder_worker(bot: Bot):
     """Background task to send reminders at the configured time."""
+    last_sent_minute = None
     while True:
         try:
-            now_str = datetime.now().strftime("%H:%M")
-            due = await db.get_due_reminders(now_str)
-            for r in due:
-                try:
-                    await bot.send_message(
-                        r["user_id"],
-                        "⏰ Eslatma: Bugun vazifalar va kitob o'qishni belgilashni unutmang!",
-                        reply_markup=reminder_keyboard()
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to send reminder to {r['user_id']}: {e}")
+            now = datetime.now()
+            now_str = now.strftime("%H:%M")
+            if now_str != last_sent_minute:
+                due = await db.get_due_reminders(now_str)
+                for r in due:
+                    try:
+                        await bot.send_message(
+                            r["user_id"],
+                            "⏰ Eslatma: Bugun vazifalar va kitob o'qishni belgilashni unutmang!",
+                            reply_markup=reminder_keyboard()
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to send reminder to {r['user_id']}: {e}")
+                last_sent_minute = now_str
             
-            # Wait 60 seconds before next check
-            await asyncio.sleep(60)
+            # Menedjer minut o'tishini kutmasligi uchun 10 soniya kutish
+            await asyncio.sleep(10)
         except Exception as e:
             logger.error(f"Error in reminder_worker: {e}")
-            await asyncio.sleep(60)
+            await asyncio.sleep(10)
 
 
 async def main():
