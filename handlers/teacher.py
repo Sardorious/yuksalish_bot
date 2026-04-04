@@ -1,5 +1,5 @@
 import io
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from itertools import groupby
 
 import openpyxl
@@ -16,7 +16,7 @@ from config import ADMIN_IDS, SUPERUSER_IDS
 from keyboards import (
     teacher_menu_keyboard, admin_menu_keyboard,
     admin_book_manager_keyboard, book_selection_keyboard, book_delete_keyboard,
-    book_edit_keyboard
+    book_edit_keyboard, report_period_keyboard
 )
 from states import TeacherReport, AddBook, EditBook
 
@@ -52,9 +52,22 @@ def parse_date(date_str: str) -> date | None:
             return None
 
 
+def parse_date_range(range_str: str) -> tuple[date, date] | None:
+    parts = range_str.split("-")
+    if len(parts) != 2:
+        return None
+    start_date = parse_date(parts[0])
+    end_date = parse_date(parts[1])
+    if start_date and end_date:
+        if start_date > end_date:
+            start_date, end_date = end_date, start_date
+        return start_date, end_date
+    return None
+
+
 # ── Excel yaratish ─────────────────────────────────────────────────────────────
 
-def build_excel(target_date: date, students: list[dict], report_type: str, class_name: str | None = None) -> io.BytesIO:
+def build_excel(start_date: date, end_date: date, students: list[dict], report_type: str, class_name: str | None = None) -> io.BytesIO:
     """
     report_type: 'exercise' or 'reading'
     """
@@ -77,19 +90,28 @@ def build_excel(target_date: date, students: list[dict], report_type: str, class
     YES_FONT = Font(color="27AE60", bold=True)
     NO_FONT  = Font(color="E74C3C")
 
+    is_range = start_date != end_date
+
     # Filter students who actually have data for this type
     if report_type == "exercise":
-        filtered = [s for s in students if s["exercises"]]
-        headers = ["#", "Ism", "Sinf", "Bajarilgan vazifalar", "Video"]
+        filtered = [s for s in students if s["exercises"] and "Bajarmadi" not in str(s["exercises"])]
+        if is_range:
+             headers = ["#", "Ism", "Sinf", "Bajarilgan vazifalar", "Video yuklangan kunlar"]
+        else:
+             headers = ["#", "Ism", "Sinf", "Bajarilgan vazifalar", "Video"]
         col_count = 5
     else:
-        filtered = [s for s in students if s["reading"]]
-        headers = ["#", "Ism", "Sinf", "Kitob", "Betlar", "Rasm"]
+        filtered = [s for s in students if s["reading"] and "Bajarmadi" not in str(s["reading"]["book_name"])]
+        if is_range:
+             headers = ["#", "Ism", "Sinf", "Kitob", "O'qilgan betlar summasi", "Rasm yuklangan kunlar"]
+        else:
+             headers = ["#", "Ism", "Sinf", "Kitob", "Betlar", "Rasm"]
         col_count = 6
 
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=col_count)
     tc = ws["A1"]
-    tc.value = f"{type_label} hisoboti — {target_date.strftime('%d.%m.%Y')}{title_suffix}"
+    date_str = f"{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}" if is_range else start_date.strftime('%d.%m.%Y')
+    tc.value = f"{type_label} hisoboti — {date_str}{title_suffix}"
     tc.font = TITLE_FONT
     tc.alignment = CENTER
     ws.row_dimensions[1].height = 28
@@ -107,14 +129,20 @@ def build_excel(target_date: date, students: list[dict], report_type: str, class
         fill = ALT_FILL if idx % 2 == 0 else None
         
         if report_type == "exercise":
-            has_video = "✅ Ha" if s["exercise_video"] else "❌ Yo'q"
+            if is_range:
+                video_val = s["exercise_video_count"]
+            else:
+                video_val = "✅ Ha" if s.get("exercise_video") else "❌ Yo'q"
             ex_list = ", ".join(s["exercises"])
-            values = [idx, s["name"], s["class_name"], ex_list, has_video]
+            values = [idx, s["name"], s["class_name"], ex_list, video_val]
         else:
-            has_photo = "✅ Ha" if s["reading"]["photo_file_id"] else "❌ Yo'q"
+            if is_range:
+                 photo_val = s["reading"].get("photo_count", 0)
+            else:
+                 photo_val = "✅ Ha" if s["reading"].get("photo_file_id") else "❌ Yo'q"
             values = [
                 idx, s["name"], s["class_name"],
-                s["reading"]["book_name"], s["reading"]["pages_read"], has_photo
+                s["reading"]["book_name"], s["reading"]["pages_read"], photo_val
             ]
             
         for col, val in enumerate(values, 1):
@@ -124,19 +152,20 @@ def build_excel(target_date: date, students: list[dict], report_type: str, class
             if fill:
                 cell.fill = fill
                 
-            # Formatting for specific columns
-            if report_type == "exercise" and col == 5:
-                cell.font = YES_FONT if "Ha" in str(val) else NO_FONT
-            elif report_type == "reading" and col == 6:
-                cell.font = YES_FONT if "Ha" in str(val) else NO_FONT
+            # Formatting for specific columns (only for single day)
+            if not is_range:
+                if report_type == "exercise" and col == 5:
+                    cell.font = YES_FONT if "Ha" in str(val) else NO_FONT
+                elif report_type == "reading" and col == 6:
+                    cell.font = YES_FONT if "Ha" in str(val) else NO_FONT
                 
         ws.row_dimensions[row].height = 18
 
     # Set column widths
     if report_type == "exercise":
-        widths = [4, 25, 14, 45, 10]
+        widths = [4, 25, 14, 45, 18 if is_range else 10]
     else:
-        widths = [4, 25, 14, 30, 8, 10]
+        widths = [4, 25, 14, 30, 20 if is_range else 8, 18 if is_range else 10]
         
     for col, w in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(col)].width = w
@@ -147,53 +176,66 @@ def build_excel(target_date: date, students: list[dict], report_type: str, class
     return out
 
 
-async def send_report(message: Message, target_date: date, report_type: str):
+async def send_report(message: Message, start_date: date, end_date: date, report_type: str):
     """
     report_type: 'exercise' or 'reading'
     """
-    report_data = await db.get_report_data(target_date)
+    report_data = await db.get_report_data(start_date, end_date)
     if not report_data:
-        return await message.answer("📭 Hali hech qanday o'quvchi ro'yxatdan o'tmagan.")
+        return await message.bot.send_message(message.chat.id, "📭 Hali hech qanday o'quvchi ro'yxatdan o'tmagan.")
 
     label = "💪 Vazifalar" if report_type == "exercise" else "📚 Kitobxonlik"
+    is_range = start_date != end_date
+    date_str = f"{start_date.strftime('%d.%m.%Y')} dan {end_date.strftime('%d.%m.%Y')} gacha" if is_range else start_date.strftime('%d.%m.%Y')
     
     # 1. Generate text summary (Forward-friendly)
-    text = f"{label} hisoboti — {target_date.strftime('%d.%m.%Y')}\n\n"
+    text = f"{label} hisoboti — {date_str}\n\n"
     count = 0
     
     if report_type == "exercise":
         for s in report_data:
-            if s["exercises"]:
+            if s["exercises"] and "Bajarmadi" not in str(s["exercises"]):
                 count += 1
                 ex_str = ", ".join(s["exercises"])
-                video_mark = " (Video ✅)" if s["exercise_video"] else ""
+                if is_range:
+                    video_mark = f" ({s['exercise_video_count']}ta video)" if s["exercise_video_count"] else ""
+                else:
+                    video_mark = " (Video ✅)" if s.get("exercise_video") else ""
                 text += f"{count}. {s['name']} ({s['class_name']}): {ex_str}{video_mark}\n"
     else:
         for s in report_data:
-            if s["reading"]:
+            if s["reading"] and "Bajarmadi" not in str(s["reading"]["book_name"]):
                 count += 1
                 r = s["reading"]
-                photo_mark = " (Rasm ✅)" if r["photo_file_id"] else ""
+                if is_range:
+                     photo_mark = f" ({r.get('photo_count', 0)}ta rasm)" if r.get('photo_count') else ""
+                else:
+                     photo_mark = " (Rasm ✅)" if r.get("photo_file_id") else ""
                 text += f"{count}. {s['name']} ({s['class_name']}): {r['book_name']}, {r['pages_read']} bet{photo_mark}\n"
     
     if count == 0:
-        return await message.answer(f"📭 {target_date.strftime('%d.%m.%Y')} kuni uchun {label.lower()} hisoboti bo'sh.")
+        return await message.bot.send_message(message.chat.id, f"📭 {date_str} kuni uchun {label.lower()} hisoboti bo'sh.")
 
     text += f"\nJami: {count} nafar o'quvchi."
 
     # 2. Generate Excel
-    excel = build_excel(target_date, report_data, report_type)
-    filename = f"{report_type}_{target_date}.xlsx"
+    excel = build_excel(start_date, end_date, report_data, report_type)
+    filename = f"{report_type}_{start_date.strftime('%d%m%Y')}"
+    if is_range:
+         filename += f"_{end_date.strftime('%d%m%Y')}"
+    filename += ".xlsx"
     
     # Send to requester
-    await message.answer_document(
-        BufferedInputFile(excel.read(), filename=filename),
+    await message.bot.send_document(
+        chat_id=message.chat.id,
+        document=BufferedInputFile(excel.read(), filename=filename),
         caption=text[:1024] # Telegram caption limit
     )
     if len(text) > 1024:
-        await message.answer(text)
+        await message.bot.send_message(message.chat.id, text)
 
-    # 3. Send to class groups
+    # 3. Send to class groups (only if it's a single day report, or do we want to send weekly reports to class groups too?
+    # Usually, sending weekly reports to groups is also welcome.)
     class_groups = await db.get_all_class_groups()
     if class_groups:
         sorted_data = sorted(report_data, key=lambda x: x["class_name"])
@@ -205,17 +247,17 @@ async def send_report(message: Message, target_date: date, report_type: str):
             class_students = list(group_iter)
             # Filter class students for this report type
             if report_type == "exercise":
-                filtered = [s for s in class_students if s["exercises"]]
+                filtered = [s for s in class_students if s["exercises"] and "Bajarmadi" not in str(s["exercises"])]
             else:
-                filtered = [s for s in class_students if s["reading"]]
+                filtered = [s for s in class_students if s["reading"] and "Bajarmadi" not in str(s["reading"]["book_name"])]
                 
             if not filtered:
                 continue
                 
-            class_excel = build_excel(target_date, class_students, report_type, class_name=class_name)
+            class_excel = build_excel(start_date, end_date, class_students, report_type, class_name=class_name)
             
             # Detailed class caption
-            c_text = f"📊 **{class_name} — {label} hisoboti**\n({target_date.strftime('%d.%m.%Y')})\n\n"
+            c_text = f"📊 **{class_name} — {label} hisoboti**\n({date_str})\n\n"
             for i, s in enumerate(filtered, 1):
                if report_type == "exercise":
                    c_text += f"{i}. {s['name']}: {', '.join(s['exercises'])}\n"
@@ -233,55 +275,91 @@ async def send_report(message: Message, target_date: date, report_type: str):
                 if len(c_text) > 1024:
                     await message.bot.send_message(chat_id=chat_id, text=c_text)
             except Exception as e:
-                await message.answer(f"⚠️ **{class_name}** guruhiga yuborishda xatolik: {e}")
+                await message.bot.send_message(message.chat.id, f"⚠️ **{class_name}** guruhiga yuborishda xatolik: {e}")
 
 
 # ── Report Handlers ────────────────────────────────────────────────────────────
 
 @router.message(F.text == "💪 Vazifalar hisoboti")
-async def btn_report_exercises_today(message: Message):
+async def btn_report_exercises_menu(message: Message):
     if not await check_teacher(message):
         return await message.answer("❌ Bu tugma faqat o'qituvchi/admin uchun.")
-    await message.answer("⏳ Vazifalar hisoboti tayyorlanmoqda...")
-    await send_report(message, date.today(), "exercise")
+    await message.answer("📊 Qaysi muddat uchun vazifalar hisobotini olmoqchisiz?", reply_markup=report_period_keyboard("exercise"))
 
 @router.message(F.text == "📚 Kitoblar hisoboti")
-async def btn_report_reading_today(message: Message):
+async def btn_report_reading_menu(message: Message):
     if not await check_teacher(message):
         return await message.answer("❌ Bu tugma faqat o'qituvchi/admin uchun.")
-    await message.answer("⏳ Kitobxonlik hisoboti tayyorlanmoqda...")
-    await send_report(message, date.today(), "reading")
+    await message.answer("📊 Qaysi muddat uchun kitoblar hisobotini olmoqchisiz?", reply_markup=report_period_keyboard("reading"))
 
 @router.message(F.text == "📅 Sana bo'yicha (Vazifa)")
 async def btn_report_exercises_by_date(message: Message, state: FSMContext):
     if not await check_teacher(message):
         return await message.answer("❌ Bu tugma faqat o'qituvchi/admin uchun.")
-    await state.set_state(TeacherReport.waiting_for_date)
-    await state.update_data(report_type="exercise")
-    await message.answer("📅 Vazifalar hisoboti uchun sanani yuboring:\nFormat: **28.03.2026**")
+    await btn_report_exercises_menu(message)
 
 @router.message(F.text == "📅 Sana bo'yicha (Kitob)")
 async def btn_report_reading_by_date(message: Message, state: FSMContext):
     if not await check_teacher(message):
         return await message.answer("❌ Bu tugma faqat o'qituvchi/admin uchun.")
-    await state.set_state(TeacherReport.waiting_for_date)
-    await state.update_data(report_type="reading")
-    await message.answer("📅 Kitoblar hisoboti uchun sanani yuboring:\nFormat: **28.03.2026**")
+    await btn_report_reading_menu(message)
+
+@router.callback_query(F.data.startswith("report_period:"))
+async def cb_report_period(call: CallbackQuery, state: FSMContext):
+    parts = call.data.split(":")
+    period = parts[1]
+    report_type = parts[2]
+    
+    today = date.today()
+    if period == "today":
+        start_date = today
+        end_date = today
+        await call.message.edit_text("⏳ Hisobot tayyorlanmoqda...")
+        await send_report(call.message, start_date, end_date, report_type)
+    elif period == "week":
+        start_date = today - timedelta(days=today.weekday()) # Monday
+        end_date = today
+        await call.message.edit_text("⏳ Hafta hisoboti tayyorlanmoqda...")
+        await send_report(call.message, start_date, end_date, report_type)
+    elif period == "month":
+        start_date = today.replace(day=1) # 1st of month
+        end_date = today
+        await call.message.edit_text("⏳ Oy hisoboti tayyorlanmoqda...")
+        await send_report(call.message, start_date, end_date, report_type)
+    elif period == "custom":
+        await state.set_state(TeacherReport.waiting_for_date_range)
+        await state.update_data(report_type=report_type)
+        await call.message.edit_text(
+            "📅 Iltimos, sana yoki oraliqni yuboring.\n"
+            "Masalan bitta kun uchun: **28.03.2026**\n"
+            "Yoki muddat uchun: **20.03.2026-28.03.2026**"
+        )
+    await call.answer()
 
 
-@router.message(TeacherReport.waiting_for_date, F.text)
-async def fsm_report_date(message: Message, state: FSMContext):
-    target_date = parse_date(message.text)
-    if not target_date:
-        return await message.answer("❌ Noto'g'ri sana formati. Masalan: **28.03.2026**")
+@router.message(TeacherReport.waiting_for_date_range, F.text)
+async def fsm_report_date_range(message: Message, state: FSMContext):
+    text = message.text.replace(" ", "")
+    if "-" in text:
+        dt_range = parse_date_range(text)
+        if not dt_range:
+            return await message.answer("❌ Noto'g'ri oraliq formati. Masalan: **20.03.2026-28.03.2026**")
+        start_date, end_date = dt_range
+    else:
+        dt = parse_date(text)
+        if not dt:
+             return await message.answer("❌ Noto'g'ri sana formati. Masalan: **28.03.2026**")
+        start_date = dt
+        end_date = dt
     
     data = await state.get_data()
-    report_type = data.get("report_type", "exercise") # Default to exercise
+    report_type = data.get("report_type", "exercise")
     await state.clear()
     
     label = "vazifalar" if report_type == "exercise" else "kitobxonlik"
-    await message.answer(f"⏳ {target_date.strftime('%d.%m.%Y')} uchun {label} hisoboti tayyorlanmoqda...")
-    await send_report(message, target_date, report_type)
+    date_str = f"{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}" if start_date != end_date else start_date.strftime('%d.%m.%Y')
+    await message.answer(f"⏳ {date_str} uchun {label} hisoboti tayyorlanmoqda...")
+    await send_report(message, start_date, end_date, report_type)
 
 
 # ── ⚠️ Belgilamaganlar ─────────────────────────────────────────────────────────

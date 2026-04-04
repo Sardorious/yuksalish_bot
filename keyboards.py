@@ -30,7 +30,6 @@ def teacher_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="💪 Vazifalar hisoboti"), KeyboardButton(text="📚 Kitoblar hisoboti")],
-            [KeyboardButton(text="📅 Sana bo'yicha (Vazifa)"), KeyboardButton(text="📅 Sana bo'yicha (Kitob)")],
             [KeyboardButton(text="📚 Kitoblarni boshqarish")],
             [KeyboardButton(text="⚠️ Belgilamaganlar"), KeyboardButton(text="📷 Bugungi media")],
             [KeyboardButton(text="🔔 Eslatma sozlash")],
@@ -47,7 +46,6 @@ def admin_menu_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="🏫 Sinflarni boshqarish"), KeyboardButton(text="📚 Kitoblarni boshqarish")],
             [KeyboardButton(text="🔗 Sinf guruhini ulash"), KeyboardButton(text="👥 O'quvchilarni boshqarish")],
             [KeyboardButton(text="💪 Vazifalar hisoboti"), KeyboardButton(text="📚 Kitoblar hisoboti")],
-            [KeyboardButton(text="📅 Sana bo'yicha (Vazifa)"), KeyboardButton(text="📅 Sana bo'yicha (Kitob)")],
             [KeyboardButton(text="⚠️ Belgilamaganlar")],
             [KeyboardButton(text="🔔 Eslatma sozlash")],
         ],
@@ -65,7 +63,6 @@ def superuser_menu_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="📋 Vazifalarni belgilash"), KeyboardButton(text="📚 Kitob o'qishni belgilash")],
             [KeyboardButton(text="💪 Vazifa natijalari"), KeyboardButton(text="📚 Kitob natijalari")],
             [KeyboardButton(text="💪 Vazifalar hisoboti"), KeyboardButton(text="📚 Kitoblar hisoboti")],
-            [KeyboardButton(text="📅 Sana bo'yicha (Vazifa)"), KeyboardButton(text="📅 Sana bo'yicha (Kitob)")],
             [KeyboardButton(text="⚠️ Belgilamaganlar"), KeyboardButton(text="📷 Bugungi media")],
             [KeyboardButton(text="➕ Vazifa qo'shish"), KeyboardButton(text="🗑 Vazifa o'chirish")],
             [KeyboardButton(text="✏️ Vazifa tahrirlash"), KeyboardButton(text="📋 Vazifalar ro'yxati")],
@@ -76,6 +73,21 @@ def superuser_menu_keyboard() -> ReplyKeyboardMarkup:
         resize_keyboard=True,
     )
 
+
+# ── Report Period Keyboard ────────────────────────────────────────────────────────
+def report_period_keyboard(report_type: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📅 Bugun", callback_data=f"report_period:today:{report_type}"),
+                InlineKeyboardButton(text="📅 Shu hafta", callback_data=f"report_period:week:{report_type}")
+            ],
+            [
+                InlineKeyboardButton(text="📅 Shu oy", callback_data=f"report_period:month:{report_type}"),
+                InlineKeyboardButton(text="📅 Boshqa sana", callback_data=f"report_period:custom:{report_type}")
+            ]
+        ]
+    )
 
 # ── Inline keyboards ───────────────────────────────────────────────────────────
 
@@ -142,6 +154,7 @@ def admin_book_manager_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="📋 Kitoblar ro'yxati", callback_data="list_books")],
         ]
     )
+
 
 def admin_student_manager_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -242,7 +255,6 @@ def reminder_manage_keyboard(enabled: bool) -> InlineKeyboardMarkup:
     buttons.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-# New keyboard for reminder notifications
 def reminder_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 Vazifalarni belgilash", callback_data="reminder_exercises")],

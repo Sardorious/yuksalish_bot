@@ -48,6 +48,7 @@ class EditBook(StatesGroup):
 
 class TeacherReport(StatesGroup):
     waiting_for_date = State()
+    waiting_for_date_range = State()
 
 
 class ManageStudent(StatesGroup):

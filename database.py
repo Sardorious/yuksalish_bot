@@ -385,7 +385,7 @@ async def get_today_media_list(target_date=None) -> dict:
         return {"videos": videos, "photos": photos}
 
 
-async def get_report_data(target_date: date) -> list[dict]:
+async def get_report_data(start_date: date, end_date: date) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -397,48 +397,85 @@ async def get_report_data(target_date: date) -> list[dict]:
         for student in students:
             uid = student["telegram_id"]
 
-            # 1. Exercises done
+            # 1. Exercises done (aggregated)
             async with db.execute(
-                """SELECT e.name FROM submissions s
+                """SELECT e.name, COUNT(e.name) as cnt FROM submissions s
                    JOIN exercises e ON e.id = s.exercise_id
-                   WHERE s.user_id = ? AND s.date = ? AND s.type = 'exercise'""",
-                (uid, target_date.isoformat()),
+                   WHERE s.user_id = ? AND s.date BETWEEN ? AND ? AND s.type = 'exercise'
+                   GROUP BY e.name""",
+                (uid, start_date.isoformat(), end_date.isoformat()),
             ) as cur:
-                exercises = [r["name"] for r in await cur.fetchall()]
+                ex_rows = await cur.fetchall()
+                if start_date == end_date:
+                    exercises = [r["name"] for r in ex_rows]
+                else:
+                    exercises = [f"{r['name']} ({r['cnt']} marta)" for r in ex_rows]
 
-            # 2. Check for exercise skip
+            # 2. Check for exercise skip count
             async with db.execute(
-                "SELECT 1 FROM submissions WHERE user_id = ? AND date = ? AND type = 'exercise_skip'",
-                (uid, target_date.isoformat()),
+                "SELECT COUNT(id) FROM submissions WHERE user_id = ? AND date BETWEEN ? AND ? AND type = 'exercise_skip'",
+                (uid, start_date.isoformat(), end_date.isoformat()),
             ) as cur:
-                exercise_skip = await cur.fetchone() is not None
+                cnt_tuple = await cur.fetchone()
+                skip_count = cnt_tuple[0] if cnt_tuple else 0
 
-            # 3. Exercise video
+            # 3. Exercise video count
             async with db.execute(
-                "SELECT file_id FROM exercise_media WHERE user_id = ? AND date = ?",
-                (uid, target_date.isoformat()),
+                "SELECT COUNT(file_id) FROM exercise_media WHERE user_id = ? AND date BETWEEN ? AND ?",
+                (uid, start_date.isoformat(), end_date.isoformat()),
             ) as cur:
-                ex_media = await cur.fetchone()
+                vid_tuple = await cur.fetchone()
+                ex_video_count = vid_tuple[0] if vid_tuple else 0
+                
+            # Exercise active days count
+            async with db.execute(
+                "SELECT COUNT(DISTINCT date) FROM submissions WHERE user_id = ? AND date BETWEEN ? AND ? AND type = 'exercise'",
+                (uid, start_date.isoformat(), end_date.isoformat()),
+            ) as cur:
+                days_tuple = await cur.fetchone()
+                ex_days_count = days_tuple[0] if days_tuple else 0
 
-            # 4. Reading
+            # 4. Reading aggregated
             async with db.execute(
                 "SELECT type, book_name, pages_read, photo_file_id FROM submissions "
-                "WHERE user_id = ? AND date = ? AND (type = 'reading' OR type = 'reading_skip')",
-                (uid, target_date.isoformat()),
+                "WHERE user_id = ? AND date BETWEEN ? AND ? AND (type = 'reading' OR type = 'reading_skip')",
+                (uid, start_date.isoformat(), end_date.isoformat()),
             ) as cur:
-                reading_row = await cur.fetchone()
+                reading_rows = await cur.fetchall()
             
             reading_data = None
-            if reading_row:
-                if reading_row["type"] == "reading_skip":
-                    reading_data = {"book_name": "Bajarmadi 🚫", "pages_read": 0, "photo_file_id": None}
-                else:
-                    reading_data = dict(reading_row)
+            if reading_rows:
+                total_pages = 0
+                books = set()
+                photo_count = 0
+                has_skip = False
+                for r in reading_rows:
+                    if r["type"] == "reading_skip":
+                        has_skip = True
+                    else:
+                        if r["book_name"]:
+                            for b in str(r["book_name"]).split(','):
+                                books.add(b.strip())
+                        if r["pages_read"]:
+                            total_pages += r["pages_read"]
+                        if r["photo_file_id"]:
+                            photo_count += 1
+                
+                if not books and has_skip:
+                    b_name = f"Bajarmadi 🚫 ({len(reading_rows)} marta)" if len(reading_rows) > 1 else "Bajarmadi 🚫"
+                    reading_data = {"book_name": b_name, "pages_read": 0, "photo_file_id": None, "photo_count": 0}
+                elif books:
+                    reading_data = {
+                        "book_name": ", ".join(books), 
+                        "pages_read": total_pages, 
+                        "photo_file_id": photo_count > 0, 
+                        "photo_count": photo_count
+                    }
 
             # Combined result
             res_exercises = exercises
-            if not exercises and exercise_skip:
-                res_exercises = ["Bajarmadi 🚫"]
+            if not exercises and skip_count > 0:
+                res_exercises = [f"Bajarmadi 🚫 ({skip_count} marta)" if start_date != end_date else "Bajarmadi 🚫"]
 
             result.append(
                 {
@@ -446,12 +483,15 @@ async def get_report_data(target_date: date) -> list[dict]:
                     "class_name": student["class_name"],
                     "telegram_id": uid,
                     "exercises": res_exercises,
-                    "exercise_video": ex_media["file_id"] if ex_media else None,
+                    "exercise_video": ex_video_count > 0,
+                    "exercise_video_count": ex_video_count,
+                    "exercise_days_count": ex_days_count,
                     "reading": reading_data,
                 }
             )
 
         return result
+
 
 
 async def get_missing_students(target_date: date | None = None):
