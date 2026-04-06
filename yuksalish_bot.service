@@ -1,0 +1,14 @@
+[Unit]
+Description=Yuksalish Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User={{SSH_USER}}
+WorkingDirectory={{DEPLOY_PATH}}
+ExecStart={{DEPLOY_PATH}}/venv/bin/python main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

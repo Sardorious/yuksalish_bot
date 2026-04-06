@@ -1,0 +1,46 @@
+name: Deploy Yuksalish Bot
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }} # If your key has a passphrase
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_PATH }}
+            
+            # Pull latest changes
+            git fetch --all
+            git reset --hard origin/main
+            
+            # Setup/Update Virtual Environment
+            if [ ! -d "venv" ]; then
+              python3 -m venv venv
+            fi
+            source venv/bin/activate
+            pip install --no-cache-dir -r requirements.txt
+            
+            # Update .env file from GitHub Secrets
+            echo "Updating .env..."
+            cat <<EOF > .env
+            BOT_TOKEN=${{ secrets.BOT_TOKEN }}
+            ADMIN_IDS=${{ secrets.ADMIN_IDS }}
+            SUPERUSER_IDS=${{ secrets.SUPERUSER_IDS }}
+            EOF
+            
+            # Restart the service
+            echo "Restarting service..."
+            sudo systemctl restart yuksalish_bot.service
+            
+            # Check status
+            sudo systemctl status yuksalish_bot.service --no-pager
