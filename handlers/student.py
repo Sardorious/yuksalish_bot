@@ -425,7 +425,7 @@ async def btn_my_exercise_stats(message: Message):
     text += f"📊 **Bugungi vazifalar — {today.strftime('%d.%m.%Y')}**\n\n"
     
     # Check for skips
-    stats = await db.get_report_data(today)
+    stats = await db.get_report_data(today, today)
     my_stats = next((s for s in stats if s["telegram_id"] == message.from_user.id), None)
 
     if my_stats and my_stats["exercises"] == ["Bajarmadi 🚫"]:
@@ -454,7 +454,7 @@ async def btn_my_reading_stats(message: Message):
     text += f"📊 **Bugungi kitob o'qish — {today.strftime('%d.%m.%Y')}**\n\n"
     
     # Check for skips
-    stats = await db.get_report_data(today)
+    stats = await db.get_report_data(today, today)
     my_stats = next((s for s in stats if s["telegram_id"] == message.from_user.id), None)
 
     if my_stats and my_stats["reading"] and my_stats["reading"]["book_name"] == "Bajarmadi 🚫":
