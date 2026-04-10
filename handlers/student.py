@@ -145,7 +145,8 @@ async def btn_log_exercises(message: Message):
             summary += "\n".join(f"  ✅ {n}" for n in done_names)
         else:
             summary += "  📭 Hech qanday vazifa belgilanmagan"
-        summary += f"\n🎥 Video: {'yuklandi ✅' if video else 'yuklanmagan'}"
+        if video:
+            summary += f"\n🎥 Video: yuklandi ✅"
         return await message.answer(
             summary + "\n\n✏️ O'zgartirmoqchimisiz?",
             reply_markup=edit_today_keyboard("exercises", has_removable_item=bool(video))
@@ -241,12 +242,13 @@ async def btn_log_reading(message: Message, state: FSMContext):
     # Already submitted reading today?
     reading = await db.get_reading_today(message.from_user.id)
     if reading:
+        photo_status = f"📷 Rasm: yuklandi ✅\n\n" if reading['photo_file_id'] else ""
         summary = (
             f"👤 **O'quvchi:** {user['name']}\n"
             f"📚 **Bugun kitob o'qish belgilangan:**\n\n"
             f"📖 Kitob: {reading['book_name']}\n"
             f"📄 Betlar: {reading['pages_read']}\n"
-            f"📷 Rasm: {'yuklandi ✅' if reading['photo_file_id'] else 'yuklanmagan'}\n\n"
+            f"{photo_status}"
             f"✏️ O'zgartirmoqchimisiz?"
         )
         return await message.answer(summary, reply_markup=edit_today_keyboard("reading", has_removable_item=True))
@@ -432,7 +434,8 @@ async def btn_my_exercise_stats(message: Message):
          text += "💪 **Holat:** Bajarmadi 🚫"
     elif done_names:
         text += "💪 **Bajarilganlar:**\n" + "\n".join(f"  ✅ {n}" for n in done_names)
-        text += f"\n  🎥 Video: {'yuklandi ✅' if video else 'yuklanmagan'}"
+        if video:
+            text += f"\n  🎥 Video: yuklandi ✅"
     else:
         text += "💪 **Holat:** Hali belgilanmagan"
 
@@ -462,9 +465,10 @@ async def btn_my_reading_stats(message: Message):
     elif reading:
         text += (
             f"📚 **Bajarilgan:**\n"
-            f"  📖 {reading['book_name']} — {reading['pages_read']} bet\n"
-            f"  📷 Rasm: {'yuklandi ✅' if reading['photo_file_id'] else 'yuklanmagan'}"
+            f"  📖 {reading['book_name']} — {reading['pages_read']} bet"
         )
+        if reading['photo_file_id']:
+            text += f"\n  📷 Rasm: yuklandi ✅"
     else:
         text += "📚 **Holat:** Hali belgilanmagan"
 
