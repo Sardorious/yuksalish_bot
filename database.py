@@ -2,6 +2,8 @@ import aiosqlite
 from datetime import date
 import sqlite3
 
+from tzutil import today
+
 DB_PATH = "exercise_bot.db"
 
 
@@ -229,7 +231,7 @@ async def update_exercise(exercise_id: int, new_name: str) -> bool:
 
 async def get_student_exercise_ids_today(user_id: int, target_date: date | None = None) -> list[int]:
     if target_date is None:
-        target_date = date.today()
+        target_date = today()
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -243,7 +245,7 @@ async def get_student_exercise_ids_today(user_id: int, target_date: date | None 
 async def has_submitted_exercises_today(user_id: int, target_date: date | None = None) -> bool:
     """Returns True if student already pressed 'Tayyor' (submitted) today."""
     if target_date is None:
-        target_date = date.today()
+        target_date = today()
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
             "SELECT 1 FROM exercise_submitted WHERE user_id = ? AND date = ?",
@@ -255,7 +257,7 @@ async def has_submitted_exercises_today(user_id: int, target_date: date | None =
 async def mark_exercises_submitted(user_id: int, target_date: date | None = None):
     """Mark that student has submitted exercises for today."""
     if target_date is None:
-        target_date = date.today()
+        target_date = today()
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "INSERT OR REPLACE INTO exercise_submitted (user_id, date) VALUES (?, ?)",
@@ -267,7 +269,7 @@ async def mark_exercises_submitted(user_id: int, target_date: date | None = None
 async def unmark_exercises_submitted(user_id: int, target_date: date | None = None):
     """Allow student to re-edit exercises (remove submitted flag)."""
     if target_date is None:
-        target_date = date.today()
+        target_date = today()
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "DELETE FROM exercise_submitted WHERE user_id = ? AND date = ?",
@@ -279,7 +281,7 @@ async def unmark_exercises_submitted(user_id: int, target_date: date | None = No
 async def toggle_exercise_submission(user_id: int, exercise_id: int, target_date: date | None = None) -> bool:
     """Returns True if added, False if removed."""
     if target_date is None:
-        target_date = date.today()
+        target_date = today()
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
             "SELECT id FROM submissions WHERE user_id = ? AND date = ? AND type = 'exercise' AND exercise_id = ?",
@@ -299,7 +301,7 @@ async def toggle_exercise_submission(user_id: int, exercise_id: int, target_date
 
 async def save_exercise_video(user_id: int, file_id: str, target_date: date | None = None):
     if target_date is None:
-        target_date = date.today()
+        target_date = today()
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "INSERT OR REPLACE INTO exercise_media (user_id, date, file_id) VALUES (?, ?, ?)",
@@ -310,7 +312,7 @@ async def save_exercise_video(user_id: int, file_id: str, target_date: date | No
 
 async def get_exercise_video(user_id: int, target_date: date | None = None) -> str | None:
     if target_date is None:
-        target_date = date.today()
+        target_date = today()
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
             "SELECT file_id FROM exercise_media WHERE user_id = ? AND date = ?",
@@ -328,7 +330,7 @@ async def add_reading_submission(
     target_date: date | None = None,
 ):
     if target_date is None:
-        target_date = date.today()
+        target_date = today()
     async with aiosqlite.connect(DB_PATH) as db:
         # Replace any existing reading entry for this day
         await db.execute(
@@ -345,7 +347,7 @@ async def add_reading_submission(
 
 async def get_reading_today(user_id: int, target_date: date | None = None):
     if target_date is None:
-        target_date = date.today()
+        target_date = today()
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -361,7 +363,7 @@ async def get_reading_today(user_id: int, target_date: date | None = None):
 async def get_today_media_list(target_date=None) -> dict:
     """Returns all students who uploaded video or book photo today."""
     if target_date is None:
-        target_date = date.today()
+        target_date = today()
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -496,7 +498,7 @@ async def get_report_data(start_date: date, end_date: date) -> list[dict]:
 
 async def get_missing_students(target_date: date | None = None):
     if target_date is None:
-        target_date = date.today()
+        target_date = today()
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -689,7 +691,7 @@ async def get_last_read_book(user_id: int) -> dict | None:
 
 async def delete_exercise_video_today(user_id: int, target_date: date | None = None):
     if target_date is None:
-        target_date = date.today()
+        target_date = today()
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "DELETE FROM exercise_media WHERE user_id = ? AND date = ?",
@@ -699,7 +701,7 @@ async def delete_exercise_video_today(user_id: int, target_date: date | None = N
 
 async def reset_reading_today(user_id: int, target_date: date | None = None):
     if target_date is None:
-        target_date = date.today()
+        target_date = today()
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "DELETE FROM submissions WHERE user_id = ? AND date = ? AND type = 'reading'",
@@ -712,7 +714,7 @@ async def add_skip_submission(user_id: int, skip_type: str, target_date: date | 
     skip_type should be 'exercise_skip' or 'reading_skip'.
     """
     if target_date is None:
-        target_date = date.today()
+        target_date = today()
     async with aiosqlite.connect(DB_PATH) as db:
         # For exercises: cleaning existing submissions
         if skip_type == "exercise_skip":
