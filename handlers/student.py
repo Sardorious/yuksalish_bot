@@ -51,6 +51,34 @@ async def cmd_start(message: Message, state: FSMContext):
         )
         return
 
+    # Admin va superuser ro'yxatdan o'tmaydi.
+    # Aks holda bo'sh bazada tuzoq hosil bo'ladi: sinf qo'shish uchun admin
+    # menyusi kerak, menyu uchun ro'yxatdan o'tish kerak, ro'yxatdan o'tish
+    # uchun esa sinf kerak — hech kim birinchi sinfni qo'sha olmaydi.
+    uid = message.from_user.id
+    if uid in ADMIN_IDS or uid in SUPERUSER_IDS:
+        name = message.from_user.full_name or "Administrator"
+        await db.create_user(uid, name, "—", role="admin")
+        keyboard = await get_role_keyboard(uid, "admin")
+        role_text = "Superuser (Hamma huquqlar)" if uid in SUPERUSER_IDS else "Admin"
+        return await message.answer(
+            f"👋 Xush kelibsiz, **{name}**! ({role_text})\n\n"
+            f"Siz .env dagi ro'yxatdasiz, shuning uchun ro'yxatdan o'tish talab qilinmadi.\n"
+            f"Boshlash uchun **🏫 Sinflarni boshqarish** orqali sinflarni qo'shing.",
+            reply_markup=keyboard,
+        )
+
+    # O'quvchini ismini so'rashdan oldin tizim tayyorligini tekshiramiz —
+    # ismini yozib bo'lgandan keyin "sinflar yo'q" deyish yomon tajriba.
+    classes = await db.get_all_classes()
+    if not classes:
+        return await message.answer(
+            "⚠️ Tizim hali sozlanmagan — sinflar qo'shilmagan.\n"
+            "Iltimos, ustozingiz yoki admindan sinflarni qo'shishni so'rang, "
+            "so'ng /start ni qayta bosing.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+
     await state.set_state(Registration.waiting_for_name)
     await message.answer(
         "👋 **Vazifa kuzatuv botiga** xush kelibsiz!\n\n"
@@ -63,12 +91,21 @@ async def cmd_start(message: Message, state: FSMContext):
 
 @router.message(Registration.waiting_for_name, F.text)
 async def fsm_get_name(message: Message, state: FSMContext):
+    name = message.text.strip()
+
+    # Buyruq ismga aylanib qolmasin (masalan "/admin" ism sifatida saqlanardi).
+    if name.startswith("/"):
+        return await message.answer(
+            "⚠️ Bu buyruq emas, **ismingizni** yozing.\n"
+            "Bekor qilish uchun /start ni bosing."
+        )
+
     classes = await db.get_all_classes()
     if not classes:
         return await message.answer(
             "⚠️ Tizimda hali sinflar mavjud emas. Iltimos, admindan sinflarni qo'shishni so'rang."
         )
-    await state.update_data(name=message.text.strip())
+    await state.update_data(name=name)
     
     await state.set_state(Registration.waiting_for_phone)
     await message.answer(
