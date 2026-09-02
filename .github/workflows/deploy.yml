@@ -70,11 +70,14 @@ jobs:
           IMAGE: ${{ needs.build.outputs.image }}:${{ github.sha }}
           COMPOSE_B64: ${{ steps.compose.outputs.b64 }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          # GHCR paketi private bo'lsa kerak. Public bo'lsa bo'sh qoldiring.
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: IMAGE,COMPOSE_B64,DEPLOY_PATH
+          envs: IMAGE,COMPOSE_B64,DEPLOY_PATH,GHCR_TOKEN,GHCR_USER
           script: |
             set -euo pipefail
 
@@ -103,13 +106,28 @@ jobs:
                 || echo "⚠️  data/ egasini o'zgartirib bo'lmadi — bot yozolmasligi mumkin"
             fi
 
+            # GHCR paketi private bo'lsa, tortish uchun login kerak.
+            # Paket public bo'lsa GHCR_TOKEN bo'sh bo'ladi va bu qadam o'tkaziladi.
+            if [ -n "${GHCR_TOKEN:-}" ]; then
+              echo "🔑 ghcr.io ga login ($GHCR_USER)"
+              echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            else
+              echo "ℹ️  GHCR_TOKEN yo'q — paket public deb hisoblanmoqda"
+            fi
+
             # Aynan shu commit'ning image'ini ishlatamiz (latest emas) —
             # shunda qaysi versiya ishlayotgani aniq va rollback oson.
             echo "IMAGE=$IMAGE"
 
             # --no-build muhim: image tortilmasa, compose serverdagi
             # kontekstdan jimgina o'zi qurib qo'ymasin. Shunda xato yashirinmaydi.
-            docker compose pull
+            if ! docker compose pull; then
+              echo "❌ Image tortilmadi. Ehtimoliy sabab: GHCR paketi private."
+              echo "   Yechim 1: paketni public qiling —"
+              echo "   https://github.com/users/$GHCR_USER/packages/container/yuksalish_bot/settings"
+              echo "   Yechim 2: GHCR_TOKEN secret'ini qo'shing (read:packages huquqli PAT)."
+              exit 1
+            fi
             docker compose up -d --remove-orphans --no-build
 
             docker inspect -f 'Ishlayotgan image: {{.Config.Image}} ({{.Image}})' yuksalish_bot
