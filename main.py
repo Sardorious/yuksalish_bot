@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -11,11 +12,14 @@ from handlers import admin, student, teacher
 from keyboards import reminder_keyboard
 from tzutil import TIMEZONE_NAME, now
 
+LOG_FILE = os.getenv("LOG_FILE", "bot.log")
+os.makedirs(os.path.dirname(LOG_FILE) or ".", exist_ok=True)
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
-        logging.FileHandler("bot.log", encoding="utf-8"),
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),
         logging.StreamHandler()
     ]
 )
@@ -61,14 +65,28 @@ async def main():
     dp.include_router(admin.router)
     dp.include_router(teacher.router)
 
-    # Start notification worker
-    asyncio.create_task(reminder_worker(bot))
+    # Start notification worker. Havolani saqlaymiz, aks holda task GC
+    # tomonidan yig'ib yuborilishi mumkin; `docker stop` (SIGTERM) da esa
+    # uni tartibli to'xtatamiz.
+    worker = asyncio.create_task(reminder_worker(bot))
 
     logger.info("Bot is running…")
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        worker.cancel()
+        try:
+            await worker
+        except asyncio.CancelledError:
+            pass
+        await bot.session.close()
+        logger.info("Bot to'xtatildi.")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
 
 

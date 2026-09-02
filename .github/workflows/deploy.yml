@@ -3,43 +3,116 @@ name: Deploy Yuksalish Bot
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
 
 jobs:
+  # ── 1-bosqich: image qurish va GHCR ga yuborish ──────────────────────────────
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Image nomini kichik harflarga o'tkazish
+        id: meta
+        run: |
+          # GHCR faqat kichik harfli nomlarni qabul qiladi (repo nomida
+          # bosh harf bo'lishi mumkin).
+          echo "image=${REGISTRY}/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: GHCR ga login
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build va push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:latest
+            ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          # Bilddan bildga cache — qayta qurish sezilarli tezlashadi.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── 2-bosqich: serverda yangi image bilan qayta ishga tushirish ──────────────
   deploy:
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          IMAGE: ${{ needs.build.outputs.image }}:${{ github.sha }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: IMAGE
           script: |
-            set -e
+            set -euo pipefail
             cd ${{ secrets.DEPLOY_PATH }}
-            
-            # Pull latest changes
+
+            # docker-compose.yml va boshqa fayllarning yangi nusxasi
             git fetch --all
             git reset --hard origin/main
-            
-            # Setup/Update Virtual Environment
-            if [ ! -d "venv" ]; then
-              python3 -m venv venv
+
+            # Ma'lumotlar papkasi (SQLite + loglar). UID 1000 — konteyner ichidagi
+            # appuser. Papka allaqachon bo'lsa, chown zarar qilmaydi.
+            mkdir -p data
+            sudo chown -R 1000:1000 data
+
+            # .env serverda qo'lda turadi — unga tegmaymiz, faqat borligini
+            # tekshiramiz, aks holda bot token'siz ishga tushib yiqiladi.
+            if [ ! -f .env ]; then
+              echo "❌ .env fayli topilmadi: $(pwd)/.env"
+              exit 1
             fi
-            source venv/bin/activate
-            pip install --no-cache-dir -r requirements.txt
-            
-            # Update .env file from GitHub Secrets
-            #echo "Updating .env..."
-            #cat <<EOF > .env
-            #BOT_TOKEN=${{ secrets.BOT_TOKEN }}
-            #ADMIN_IDS=${{ secrets.ADMIN_IDS }}
-            #SUPERUSER_IDS=${{ secrets.SUPERUSER_IDS }}
-            #EOF
-            
-            # Restart the service
-            echo "Restarting service..."
-            sudo systemctl restart yuksalish_bot.service
-            
-            # Check status
-            sudo systemctl status yuksalish_bot.service --no-pager
+
+            # Agar GHCR paketi private bo'lsa, pull uchun login kerak.
+            # Paket public bo'lsa bu qadamni o'tkazib yuborsa ham bo'ladi.
+            if [ -n "${{ secrets.GHCR_TOKEN }}" ]; then
+              echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
+                -u "${{ secrets.GHCR_USERNAME || github.actor }}" --password-stdin
+            fi
+
+            # Aynan shu commit'ning image'ini ishlatamiz (latest emas) —
+            # shunda qaysi versiya ishlayotgani aniq bo'ladi va rollback oson.
+            echo "IMAGE=$IMAGE"
+
+            # --no-build muhim: image tortilmasa, compose serverdagi
+            # kontekstdan jimgina o'zi qurib qo'ymasin. Shunda xato yashirinmaydi.
+            docker compose pull
+            docker compose up -d --remove-orphans --no-build
+
+            # Qaysi image haqiqatan ishlayotgani log'da ko'rinib tursin.
+            docker inspect -f 'Ishlayotgan image: {{.Config.Image}} ({{.Image}})' yuksalish_bot
+
+            # Eski, ishlatilmayotgan image'lar diskni yeb qo'ymasin.
+            docker image prune -f
+
+            # Konteyner haqiqatan ko'tarilganini tekshiramiz.
+            sleep 5
+            docker compose ps
+            if [ "$(docker inspect -f '{{.State.Running}}' yuksalish_bot)" != "true" ]; then
+              echo "❌ Konteyner ishga tushmadi. Oxirgi loglar:"
+              docker compose logs --tail 50
+              exit 1
+            fi
+            echo "✅ Deploy muvaffaqiyatli: $IMAGE"
+            docker compose logs --tail 20

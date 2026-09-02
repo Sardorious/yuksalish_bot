@@ -53,6 +53,55 @@ python main.py
 
 ---
 
+## Running with Docker (recommended for servers)
+
+```bash
+cp .env.example .env      # fill in BOT_TOKEN / ADMIN_IDS
+mkdir -p data && sudo chown -R 1000:1000 data
+docker compose up -d --build
+docker compose logs -f
+```
+
+The SQLite database and `bot.log` live in `./data`, which is bind-mounted into
+the container — they survive rebuilds and image updates. **Back up this folder.**
+
+| Command | What it does |
+|---------|--------------|
+| `docker compose logs -f` | Follow the bot's logs |
+| `docker compose restart` | Restart without rebuilding |
+| `docker compose down` | Stop and remove the container (data is kept) |
+| `docker compose pull && docker compose up -d` | Update to the latest published image |
+
+### Deployment (CI/CD)
+
+Pushing to `main` triggers `.github/workflows/deploy.yml`, which:
+
+1. builds the image and pushes it to GHCR as
+   `ghcr.io/<owner>/<repo>:latest` **and** `:<commit-sha>`;
+2. connects to the server over SSH, pulls that exact SHA-tagged image and runs
+   `docker compose up -d`;
+3. verifies the container is actually running and fails the job (printing the
+   last 50 log lines) if it isn't.
+
+Required repository secrets:
+
+| Secret | Purpose |
+|--------|---------|
+| `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY` | Server access |
+| `DEPLOY_PATH` | Path to the checked-out repo on the server |
+| `GHCR_TOKEN`, `GHCR_USERNAME` | *Optional* — only if the GHCR package is private |
+
+The `.env` file is **not** managed by CI; it lives on the server and the deploy
+job only checks that it exists.
+
+To roll back, SSH in and run:
+
+```bash
+IMAGE=ghcr.io/<owner>/<repo>:<older-sha> docker compose up -d
+```
+
+---
+
 ## Commands
 
 ### Admin
@@ -99,6 +148,8 @@ exercise-bot/
 ├── main.py               # Entry point
 ├── config.py             # Loads .env
 ├── tzutil.py             # Timezone-aware today() / now()
+├── Dockerfile            # Container image
+├── docker-compose.yml    # Service definition (volume, env, restart policy)
 ├── database.py           # Async SQLite (aiosqlite)
 ├── keyboards.py          # Inline & reply keyboard builders
 ├── states.py             # FSM state groups

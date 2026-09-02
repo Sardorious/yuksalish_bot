@@ -9,6 +9,9 @@
 # Database file
 *.db
 
+# Docker volume (SQLite bazasi + loglar)
+data/
+
 # Python cache
 __pycache__/
 *.py[cod]

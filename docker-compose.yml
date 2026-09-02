@@ -1,0 +1,31 @@
+services:
+  bot:
+    # Image GitHub Actions tomonidan qurilib GHCR ga yuboriladi.
+    # Lokal build uchun: docker compose build (quyidagi build bo'limi ishlatiladi).
+    image: ${IMAGE:-ghcr.io/sardorious/yuksalish_bot:latest}
+    build: .
+    container_name: yuksalish_bot
+    restart: unless-stopped
+
+    # BOT_TOKEN, ADMIN_IDS, SUPERUSER_IDS, TIMEZONE — serverdagi .env faylidan.
+    env_file:
+      - .env
+
+    environment:
+      # Konteyner ichidagi tizim vaqti ham to'g'ri mintaqada bo'lsin.
+      TZ: ${TIMEZONE:-Asia/Tashkent}
+      DB_PATH: /app/data/exercise_bot.db
+      LOG_FILE: /app/data/bot.log
+
+    # SQLite bazasi va loglar shu papkada — konteyner qayta qurilsa ham saqlanadi.
+    volumes:
+      - ./data:/app/data
+
+    # Loglar diskni to'ldirib yubormasligi uchun.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    stop_grace_period: 20s

@@ -1,10 +1,15 @@
-import aiosqlite
-from datetime import date
+import os
 import sqlite3
+from datetime import date
+
+import aiosqlite
 
 from tzutil import today
 
-DB_PATH = "exercise_bot.db"
+# Docker'da ma'lumotlar bazasi volume ichida turadi, shu sababli yo'l
+# .env dagi DB_PATH orqali sozlanadi. Lokal ishga tushirishda standart
+# qiymat oldingidek papkaning o'zida qoladi.
+DB_PATH = os.getenv("DB_PATH", "exercise_bot.db")
 
 
 async def init_db():
