@@ -58,7 +58,9 @@ python main.py
 ```bash
 cp .env.example .env      # fill in BOT_TOKEN / ADMIN_IDS
 mkdir -p data && sudo chown -R 1000:1000 data
-docker compose up -d --build
+
+docker build -t yuksalish_bot:local .
+IMAGE=yuksalish_bot:local docker compose up -d
 docker compose logs -f
 ```
 
@@ -78,10 +80,14 @@ Pushing to `main` triggers `.github/workflows/deploy.yml`, which:
 
 1. builds the image and pushes it to GHCR as
    `ghcr.io/<owner>/<repo>:latest` **and** `:<commit-sha>`;
-2. connects to the server over SSH, pulls that exact SHA-tagged image and runs
-   `docker compose up -d`;
+2. connects to the server over SSH, uploads `docker-compose.yml`, pulls that
+   exact SHA-tagged image and runs `docker compose up -d`;
 3. verifies the container is actually running and fails the job (printing the
    last 50 log lines) if it isn't.
+
+**The server needs no git clone and no source code** — only a directory
+containing `.env` and `data/`. The deploy job creates the directory if missing
+and writes `docker-compose.yml` into it on every run.
 
 Required repository secrets:
 

@@ -51,31 +51,41 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ── 2-bosqich: serverda yangi image bilan qayta ishga tushirish ──────────────
+  # Serverda git repo YO'Q — faqat docker-compose.yml, .env va data/ kerak.
+  # docker-compose.yml shu job'ning o'zi tomonidan yetkaziladi.
   deploy:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: docker-compose.yml ni tayyorlash
+        id: compose
+        run: echo "b64=$(base64 -w0 docker-compose.yml)" >> "$GITHUB_OUTPUT"
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
           IMAGE: ${{ needs.build.outputs.image }}:${{ github.sha }}
+          COMPOSE_B64: ${{ steps.compose.outputs.b64 }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: IMAGE
+          envs: IMAGE,COMPOSE_B64,DEPLOY_PATH
           script: |
             set -euo pipefail
-            cd ${{ secrets.DEPLOY_PATH }}
 
-            # docker-compose.yml va boshqa fayllarning yangi nusxasi
-            git fetch --all
-            git reset --hard origin/main
+            # eval — DEPLOY_PATH da '~' bo'lsa ham to'g'ri ochilishi uchun.
+            eval DEPLOY_DIR="$DEPLOY_PATH"
+            mkdir -p "$DEPLOY_DIR"
+            cd "$DEPLOY_DIR"
+            echo "📁 $(pwd)"
 
-            # Ma'lumotlar papkasi (SQLite + loglar). UID 1000 — konteyner ichidagi
-            # appuser. Papka allaqachon bo'lsa, chown zarar qilmaydi.
-            mkdir -p data
-            sudo chown -R 1000:1000 data
+            # docker-compose.yml ni repodan yetkazamiz — serverda git kerak emas.
+            echo "$COMPOSE_B64" | base64 -d > docker-compose.yml
 
             # .env serverda qo'lda turadi — unga tegmaymiz, faqat borligini
             # tekshiramiz, aks holda bot token'siz ishga tushib yiqiladi.
@@ -84,15 +94,17 @@ jobs:
               exit 1
             fi
 
-            # Agar GHCR paketi private bo'lsa, pull uchun login kerak.
-            # Paket public bo'lsa bu qadamni o'tkazib yuborsa ham bo'ladi.
-            if [ -n "${{ secrets.GHCR_TOKEN }}" ]; then
-              echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
-                -u "${{ secrets.GHCR_USERNAME || github.actor }}" --password-stdin
+            # Ma'lumotlar papkasi (SQLite + loglar). Konteyner ichida appuser
+            # UID 1000 bilan ishlaydi, shuning uchun papka o'shanga tegishli bo'lsin.
+            mkdir -p data
+            if [ "$(stat -c %u data)" != "1000" ]; then
+              sudo chown -R 1000:1000 data \
+                || chown -R 1000:1000 data \
+                || echo "⚠️  data/ egasini o'zgartirib bo'lmadi — bot yozolmasligi mumkin"
             fi
 
             # Aynan shu commit'ning image'ini ishlatamiz (latest emas) —
-            # shunda qaysi versiya ishlayotgani aniq bo'ladi va rollback oson.
+            # shunda qaysi versiya ishlayotgani aniq va rollback oson.
             echo "IMAGE=$IMAGE"
 
             # --no-build muhim: image tortilmasa, compose serverdagi
@@ -100,7 +112,6 @@ jobs:
             docker compose pull
             docker compose up -d --remove-orphans --no-build
 
-            # Qaysi image haqiqatan ishlayotgani log'da ko'rinib tursin.
             docker inspect -f 'Ishlayotgan image: {{.Config.Image}} ({{.Image}})' yuksalish_bot
 
             # Eski, ishlatilmayotgan image'lar diskni yeb qo'ymasin.
