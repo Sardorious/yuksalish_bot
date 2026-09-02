@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from datetime import datetime
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -10,6 +9,7 @@ from config import BOT_TOKEN
 import database as db
 from handlers import admin, student, teacher
 from keyboards import reminder_keyboard
+from tzutil import TIMEZONE_NAME, now
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,8 +27,7 @@ async def reminder_worker(bot: Bot):
     last_sent_minute = None
     while True:
         try:
-            now = datetime.now()
-            now_str = now.strftime("%H:%M")
+            now_str = now().strftime("%H:%M")
             if now_str != last_sent_minute:
                 due = await db.get_due_reminders(now_str)
                 for r in due:
@@ -52,6 +51,7 @@ async def reminder_worker(bot: Bot):
 async def main():
     await db.init_db()
     logger.info("Database initialised ✔")
+    logger.info(f"Vaqt mintaqasi: {TIMEZONE_NAME} (hozir {now():%Y-%m-%d %H:%M})")
 
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="Markdown"))
     dp  = Dispatcher(storage=MemoryStorage())

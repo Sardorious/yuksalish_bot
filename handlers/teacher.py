@@ -13,6 +13,7 @@ from aiogram.fsm.context import FSMContext
 
 import database as db
 from config import ADMIN_IDS, SUPERUSER_IDS
+from tzutil import today
 from keyboards import (
     teacher_menu_keyboard, admin_menu_keyboard,
     admin_book_manager_keyboard, book_selection_keyboard, book_delete_keyboard,
@@ -310,7 +311,7 @@ async def cb_report_period(call: CallbackQuery, state: FSMContext):
     period = parts[1]
     report_type = parts[2]
     
-    today = date.today()
+    today = today()
     if period == "today":
         start_date = today
         end_date = today
@@ -369,7 +370,7 @@ async def btn_missing(message: Message):
     if not await check_teacher(message):
         return await message.answer("❌ Bu tugma faqat o'qituvchi/admin uchun.")
 
-    today = date.today()
+    today = today()
     missing = await db.get_missing_students(today)
     if not missing:
         return await message.answer(

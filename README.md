@@ -38,7 +38,12 @@ Edit `.env`:
 ```
 BOT_TOKEN=your_actual_token_here
 ADMIN_IDS=your_telegram_id
+TIMEZONE=Asia/Tashkent
 ```
+
+> **Note:** all dates and reminder times use `TIMEZONE`, not the server clock.
+> If the server runs in UTC and you leave this unset, the default
+> `Asia/Tashkent` is used.
 
 ### 4. Run
 
@@ -93,6 +98,7 @@ python main.py
 exercise-bot/
 ├── main.py               # Entry point
 ├── config.py             # Loads .env
+├── tzutil.py             # Timezone-aware today() / now()
 ├── database.py           # Async SQLite (aiosqlite)
 ├── keyboards.py          # Inline & reply keyboard builders
 ├── states.py             # FSM state groups
