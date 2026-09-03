@@ -13,17 +13,30 @@ from keyboards import reminder_keyboard
 from tzutil import TIMEZONE_NAME, now
 
 LOG_FILE = os.getenv("LOG_FILE", "bot.log")
-os.makedirs(os.path.dirname(LOG_FILE) or ".", exist_ok=True)
+
+# Log faylni yozib bo'lmasligi botni yiqitmasligi kerak — stdout baribir
+# `docker logs` ga tushadi. Ilgari yozib bo'lmaydigan volume butun jarayonni
+# import bosqichidayoq PermissionError bilan to'xtatardi.
+_handlers: list[logging.Handler] = [logging.StreamHandler()]
+_log_file_error: OSError | None = None
+try:
+    os.makedirs(os.path.dirname(LOG_FILE) or ".", exist_ok=True)
+    _handlers.insert(0, logging.FileHandler(LOG_FILE, encoding="utf-8"))
+except OSError as exc:
+    _log_file_error = exc
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_FILE, encoding="utf-8"),
-        logging.StreamHandler()
-    ]
+    handlers=_handlers,
 )
 logger = logging.getLogger(__name__)
+
+if _log_file_error is not None:
+    logger.warning(
+        "Log fayl ochilmadi (%s): %s — loglar faqat stdout ga yoziladi.",
+        LOG_FILE, _log_file_error,
+    )
 
 
 async def reminder_worker(bot: Bot):
@@ -52,7 +65,32 @@ async def reminder_worker(bot: Bot):
             await asyncio.sleep(10)
 
 
+def check_data_dir_writable() -> None:
+    """Baza papkasiga yozib bo'lishini oldindan tekshiramiz.
+
+    Aks holda sqlite tushunarsiz "unable to open database file" beradi.
+    Eng ko'p uchraydigan sabab — Docker volume egasi root, konteyner esa
+    UID 1000 bilan ishlaydi.
+    """
+    data_dir = os.path.dirname(os.path.abspath(db.DB_PATH)) or "."
+    probe = os.path.join(data_dir, ".write_probe")
+    try:
+        os.makedirs(data_dir, exist_ok=True)
+        with open(probe, "w") as fh:
+            fh.write("ok")
+        os.remove(probe)
+    except OSError as exc:
+        logger.error(
+            "❌ Ma'lumotlar papkasiga (%s) yozib bo'lmadi: %s\n"
+            "   Docker'da volume egasini tuzating:\n"
+            "   docker run --rm -v yuksalish-bot-data:/v alpine chown -R 1000:1000 /v",
+            data_dir, exc,
+        )
+        raise
+
+
 async def main():
+    check_data_dir_writable()
     await db.init_db()
     logger.info("Database initialised ✔")
     logger.info(f"Vaqt mintaqasi: {TIMEZONE_NAME} (hozir {now():%Y-%m-%d %H:%M})")
