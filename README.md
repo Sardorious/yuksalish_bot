@@ -80,14 +80,33 @@ Pushing to `main` triggers `.github/workflows/deploy.yml`, which:
 
 1. builds the image and pushes it to GHCR as
    `ghcr.io/<owner>/<repo>:latest` **and** `:<commit-sha>`;
-2. connects to the server over SSH, uploads `docker-compose.yml`, pulls that
-   exact SHA-tagged image and runs `docker compose up -d`;
+2. connects to the server over SSH, pulls that exact SHA-tagged image, tags it
+   locally as `:latest`, and runs `docker compose up -d --no-deps yuksalish-bot`;
 3. verifies the container is actually running and fails the job (printing the
    last 50 log lines) if it isn't.
 
-**The server needs no git clone and no source code** — only a directory
-containing `.env` and `data/`. The deploy job creates the directory if missing
-and writes `docker-compose.yml` into it on every run.
+**The server needs no git clone and no source code.** On the server the bot is
+one service inside a shared `docker-compose.yml` that also runs other projects.
+That file and the `.env` beside it are maintained by hand — **the deploy job
+never writes to them**, and it uses `--no-deps` (and never `--remove-orphans`)
+so neighbouring services are left untouched.
+
+The service block there looks like this:
+
+```yaml
+  yuksalish-bot:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/yuksalish_bot:latest
+    container_name: yuksalish-bot
+    restart: unless-stopped
+    environment:
+      - BOT_TOKEN=${YUKSALISH_BOT_TOKEN}
+      - ADMIN_IDS=${YUKSALISH_ADMIN_IDS}
+      - SUPERUSER_IDS=${YUKSALISH_SUPERUSER_IDS}
+      - TZ=Asia/Tashkent
+    volumes:
+      - yuksalish-bot-data:/app/data   # NB: /app/data, not /data
+    networks: [apps]
+```
 
 Required repository secrets:
 

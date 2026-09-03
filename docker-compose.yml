@@ -1,7 +1,11 @@
+# ⚠️ Bu fayl faqat LOKAL sinash uchun.
+# Serverda bot alohida emas, umumiy stack ichida ishlaydi — u yerdagi
+# docker-compose.yml qo'lda boshqariladi va CI unga tegmaydi. README dagi
+# "Deployment" bo'limiga qarang.
+
 services:
   bot:
     # Image GitHub Actions tomonidan qurilib GHCR ga yuboriladi.
-    # Serverda manba kodi saqlanmaydi, shuning uchun bu yerda `build:` yo'q.
     # Lokal sinash uchun:
     #   docker build -t yuksalish_bot:local .
     #   IMAGE=yuksalish_bot:local docker compose up -d

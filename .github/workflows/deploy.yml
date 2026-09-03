@@ -50,26 +50,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ── 2-bosqich: serverda yangi image bilan qayta ishga tushirish ──────────────
-  # Serverda git repo YO'Q — faqat docker-compose.yml, .env va data/ kerak.
-  # docker-compose.yml shu job'ning o'zi tomonidan yetkaziladi.
+  # ── 2-bosqich: serverdagi umumiy stack ichida shu servisni yangilash ────────
+  # MUHIM: bu job serverdagi docker-compose.yml ga TEGMAYDI. U fayl qo'lda
+  # boshqariladi va boshqa loyihalarni ham saqlaydi. Biz faqat kerakli
+  # image'ni tortib, faqat `yuksalish-bot` servisini qayta ishga tushiramiz.
   deploy:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: docker-compose.yml ni tayyorlash
-        id: compose
-        run: echo "b64=$(base64 -w0 docker-compose.yml)" >> "$GITHUB_OUTPUT"
-
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
           IMAGE: ${{ needs.build.outputs.image }}:${{ github.sha }}
-          COMPOSE_B64: ${{ steps.compose.outputs.b64 }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          SERVICE: yuksalish-bot
           # GHCR paketi private bo'lsa kerak. Public bo'lsa bo'sh qoldiring.
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           GHCR_USER: ${{ github.actor }}
@@ -77,71 +71,55 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: IMAGE,COMPOSE_B64,DEPLOY_PATH,GHCR_TOKEN,GHCR_USER
+          envs: IMAGE,DEPLOY_PATH,SERVICE,GHCR_TOKEN,GHCR_USER
           script: |
             set -euo pipefail
 
             # eval — DEPLOY_PATH da '~' bo'lsa ham to'g'ri ochilishi uchun.
             eval DEPLOY_DIR="$DEPLOY_PATH"
-            mkdir -p "$DEPLOY_DIR"
             cd "$DEPLOY_DIR"
             echo "📁 $(pwd)"
 
-            # docker-compose.yml ni repodan yetkazamiz — serverda git kerak emas.
-            echo "$COMPOSE_B64" | base64 -d > docker-compose.yml
-
-            # .env serverda qo'lda turadi — unga tegmaymiz, faqat borligini
-            # tekshiramiz, aks holda bot token'siz ishga tushib yiqiladi.
-            if [ ! -f .env ]; then
-              echo "❌ .env fayli topilmadi: $(pwd)/.env"
-              exit 1
-            fi
-
-            # Ma'lumotlar papkasi (SQLite + loglar). Konteyner ichida appuser
-            # UID 1000 bilan ishlaydi, shuning uchun papka o'shanga tegishli bo'lsin.
-            mkdir -p data
-            if [ "$(stat -c %u data)" != "1000" ]; then
-              sudo chown -R 1000:1000 data \
-                || chown -R 1000:1000 data \
-                || echo "⚠️  data/ egasini o'zgartirib bo'lmadi — bot yozolmasligi mumkin"
-            fi
+            # Bu fayllar serverda qo'lda boshqariladi — biz ularni faqat
+            # o'qiymiz, hech qachon yozmaymiz.
+            [ -f docker-compose.yml ] || { echo "❌ docker-compose.yml topilmadi: $(pwd)"; exit 1; }
+            [ -f .env ] || { echo "❌ .env topilmadi: $(pwd)"; exit 1; }
 
             # GHCR paketi private bo'lsa, tortish uchun login kerak.
-            # Paket public bo'lsa GHCR_TOKEN bo'sh bo'ladi va bu qadam o'tkaziladi.
             if [ -n "${GHCR_TOKEN:-}" ]; then
               echo "🔑 ghcr.io ga login ($GHCR_USER)"
               echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-            else
-              echo "ℹ️  GHCR_TOKEN yo'q — paket public deb hisoblanmoqda"
             fi
 
-            # Aynan shu commit'ning image'ini ishlatamiz (latest emas) —
-            # shunda qaysi versiya ishlayotgani aniq va rollback oson.
+            # Aynan shu commit'ning image'ini tortamiz, so'ng uni lokal :latest
+            # deb belgilaymiz. Shunda compose fayl :latest ga qarab tursa ham,
+            # ishga tushadigan narsa aniq shu commit bo'ladi.
             echo "IMAGE=$IMAGE"
-
-            # --no-build muhim: image tortilmasa, compose serverdagi
-            # kontekstdan jimgina o'zi qurib qo'ymasin. Shunda xato yashirinmaydi.
-            if ! docker compose pull; then
+            if ! docker pull "$IMAGE"; then
               echo "❌ Image tortilmadi. Ehtimoliy sabab: GHCR paketi private."
               echo "   Yechim 1: paketni public qiling —"
               echo "   https://github.com/users/$GHCR_USER/packages/container/yuksalish_bot/settings"
               echo "   Yechim 2: GHCR_TOKEN secret'ini qo'shing (read:packages huquqli PAT)."
               exit 1
             fi
-            docker compose up -d --remove-orphans --no-build
+            docker tag "$IMAGE" "${IMAGE%:*}:latest"
 
-            docker inspect -f 'Ishlayotgan image: {{.Config.Image}} ({{.Image}})' yuksalish_bot
+            # --no-deps: qo'shni servislarga (postgres, nginx, boshqa botlar)
+            # tegilmasin. --remove-orphans ATAYLAB yo'q: u umumiy compose
+            # faylda begona konteynerlarni o'chirib yuboradi.
+            docker compose up -d --no-deps "$SERVICE"
 
-            # Eski, ishlatilmayotgan image'lar diskni yeb qo'ymasin.
+            docker inspect -f 'Ishlayotgan image: {{.Config.Image}} ({{.Image}})' "$SERVICE"
+
+            # Faqat tegsiz (dangling) image'lar o'chadi, boshqa loyihalarniki emas.
             docker image prune -f
 
-            # Konteyner haqiqatan ko'tarilganini tekshiramiz.
             sleep 5
-            docker compose ps
-            if [ "$(docker inspect -f '{{.State.Running}}' yuksalish_bot)" != "true" ]; then
+            docker compose ps "$SERVICE"
+            if [ "$(docker inspect -f '{{.State.Running}}' "$SERVICE")" != "true" ]; then
               echo "❌ Konteyner ishga tushmadi. Oxirgi loglar:"
-              docker compose logs --tail 50
+              docker compose logs --tail 50 "$SERVICE"
               exit 1
             fi
             echo "✅ Deploy muvaffaqiyatli: $IMAGE"
-            docker compose logs --tail 20
+            docker compose logs --tail 20 "$SERVICE"
