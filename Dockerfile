@@ -3,11 +3,12 @@
 FROM python:3.12-slim AS base
 
 # tzdata — zoneinfo (Asia/Tashkent) uchun zarur.
-# PYTHONUNBUFFERED — loglar docker logs'ga darhol tushishi uchun.
+# gosu  — entrypoint da root'dan appuser ga tushish uchun.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tzdata \
+    && apt-get install -y --no-install-recommends tzdata gosu \
     && rm -rf /var/lib/apt/lists/*
 
+# PYTHONUNBUFFERED — loglar docker logs'ga darhol tushishi uchun.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -36,12 +37,13 @@ RUN set -eux; \
         python -c "import main; print('import tekshiruvi OK')"; \
     rm -f /tmp/build.log
 
-# Root'dan ishlamaymiz. UID 1000 — serverdagi ./data papkasi egasi bilan mos.
+# Root'dan ishlamaymiz: entrypoint volume egaligini tuzatib, appuser ga tushadi.
 RUN useradd --uid 1000 --create-home --shell /bin/bash appuser \
     && mkdir -p /app/data \
-    && chown -R appuser:appuser /app
-USER appuser
+    && chown -R appuser:appuser /app \
+    && chmod +x /app/docker-entrypoint.sh
 
 VOLUME ["/app/data"]
 
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["python", "main.py"]

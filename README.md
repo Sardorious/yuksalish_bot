@@ -64,6 +64,12 @@ IMAGE=yuksalish_bot:local docker compose up -d
 docker compose logs -f
 ```
 
+The container starts as root only to fix the data directory's ownership, then
+immediately drops to UID 1000 via `gosu` (see `docker-entrypoint.sh`). This
+matters for volumes carried over from an earlier setup: Docker only copies the
+image's ownership into a **new, empty** named volume, so a pre-existing one
+stays `root`-owned and the app cannot write to it.
+
 The SQLite database and `bot.log` live in `./data`, which is bind-mounted into
 the container — they survive rebuilds and image updates. **Back up this folder.**
 

@@ -82,8 +82,12 @@ def check_data_dir_writable() -> None:
     except OSError as exc:
         logger.error(
             "❌ Ma'lumotlar papkasiga (%s) yozib bo'lmadi: %s\n"
-            "   Docker'da volume egasini tuzating:\n"
-            "   docker run --rm -v yuksalish-bot-data:/v alpine chown -R 1000:1000 /v",
+            "   Sabab odatda: Docker volume egasi root, konteyner esa UID 1000.\n"
+            "   Volume nomini TOPING — compose unga loyiha nomini prefiks qiladi\n"
+            "   (masalan 'deploy_yuksalish-bot-data', 'yuksalish-bot-data' emas):\n"
+            "     docker inspect -f '{{range .Mounts}}{{.Name}}{{end}}' <konteyner>\n"
+            "   so'ng aynan o'sha nom bilan:\n"
+            "     docker run --rm -v <volume>:/v alpine chown -R 1000:1000 /v",
             data_dir, exc,
         )
         raise

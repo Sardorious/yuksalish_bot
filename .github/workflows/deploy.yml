@@ -85,6 +85,17 @@ jobs:
             [ -f docker-compose.yml ] || { echo "❌ docker-compose.yml topilmadi: $(pwd)"; exit 1; }
             [ -f .env ] || { echo "❌ .env topilmadi: $(pwd)"; exit 1; }
 
+            # Servis shu compose faylda bormi? Bo'lmasa image'ni behuda tortmaymiz
+            # va DEPLOY_PATH noto'g'ri papkani ko'rsatayotganini darhol aytamiz.
+            if ! docker compose config --services | grep -qx "$SERVICE"; then
+              echo "❌ '$SERVICE' servisi bu papkadagi docker-compose.yml da yo'q."
+              echo "   Papka: $(pwd)"
+              echo "   Mavjud servislar:"
+              docker compose config --services | sed 's/^/     - /'
+              echo "   DEPLOY_PATH secret'i to'g'ri papkani ko'rsatyaptimi?"
+              exit 1
+            fi
+
             # GHCR paketi private bo'lsa, tortish uchun login kerak.
             if [ -n "${GHCR_TOKEN:-}" ]; then
               echo "🔑 ghcr.io ga login ($GHCR_USER)"
